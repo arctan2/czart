@@ -5,14 +5,14 @@ const CandleChart = candle_chart.CandleChart;
 const Candle = candle_chart.Candle;
 
 pub fn main() void {
-    const screen_width: i32 = 1200;
-    const screen_height: i32 = 640;
+    const screen_width: i32 = 1400;
+    const screen_height: i32 = 740;
 
     rl.initWindow(screen_width, screen_height, "candle chart");
     defer rl.closeWindow();
 
     var candles = [_]Candle{
-        .{ .open = 120.5, .close = 125.8, .low = 118.2, .high = 128.1, .timestamp = 10 },
+        .{ .open = 120.5, .close = 125.0, .low = 118.2, .high = 128.1, .timestamp = 10 },
         .{ .open = 125.8, .close = 123.4, .low = 121.7, .high = 127.9, .timestamp = 20 },
         .{ .open = 123.4, .close = 130.2, .low = 122.8, .high = 132.5, .timestamp = 30 },
         .{ .open = 130.2, .close = 128.6, .low = 127.1, .high = 133.0, .timestamp = 40 },
@@ -25,25 +25,22 @@ pub fn main() void {
     };
     var chart: CandleChart = .init(
         .{
-            .width = screen_width - 20,
-            .height = screen_height - 20,
-            .x = 0,
-            .y = 0,
+            .x = 20,
+            .y = 20,
+            .width = screen_width - 40,
+            .height = screen_height - 40,
         },
         &candles,
-        .{ .x = 10, .y = 10 }
     );
 
     rl.setTargetFPS(60);
 
     while (!rl.windowShouldClose()) {
-        const delta = rl.getFrameTime();
-
         rl.beginDrawing();
         defer rl.endDrawing();
 
-        rl.clearBackground(rl.Color{ .r = 120, .g = 20, .b = 20, .a = 255 });
-        chart.handleEvents(delta);
+        rl.clearBackground(.{ .r = 10, .g = 10, .b = 15, .a = 255 });
+        chart.handleEvents();
         chart.draw();
     }
 }

@@ -1,248 +1,252 @@
 const rl = @import("raylib");
 const std = @import("std");
 
-pub const Candle = struct {
-    const CANDLE_WIDTH: f32 = 12;
-    const CANDLE_GAP: f32 = 6;
+fn toScreenY(price: f32, view_min: f32, view_max: f32, chart_height: f32) f32 {
+    const t = (price - view_min) / (view_max - view_min);
+    return chart_height * (1.0 - t);
+}
 
+fn toPriceY(screen_y: f32, view_min: f32, view_max: f32, chart_height: f32) f32 {
+    const t = 1.0 - (screen_y / chart_height);
+    return view_min + t * (view_max - view_min);
+}
+
+fn niceInterval(raw: f32) f32 {
+    if (raw <= 0) return 1;
+    const magnitude = std.math.pow(f32, 10.0, @floor(std.math.log10(raw)));
+    const normalized = raw / magnitude;
+    const nice: f32 = if (normalized < 1.5) 1.0 else if (normalized < 3.5) 2.0 else if (normalized < 7.5) 5.0 else 10.0;
+    return nice * magnitude;
+}
+
+pub const Candle = struct {
     open: f32,
     close: f32,
     low: f32,
     high: f32,
     timestamp: u64,
-
-    fn priceToScreenY(
-        price: f32,
-        view_min: f32,
-        view_max: f32,
-        chart_top: f32,
-        chart_height: f32,
-    ) f32 {
-        const normalized = (price - view_min) / (view_max - view_min);
-        return chart_top + chart_height * (1 - normalized);
-    }
-
-    pub fn draw(
-        self: *const Candle,
-        chart: *const CandleChart,
-        idx: usize
-    ) void {
-        const wax_x = chart.chart_screen_rect.x + chart.chart_screen_rect.width -
-            ((CANDLE_WIDTH + CANDLE_GAP) * (@as(f32, @floatFromInt(idx)) + 1));
-
-        const open_y = priceToScreenY(
-            self.open,
-            chart.view_min,
-            chart.view_max,
-            chart.chart_screen_rect.y,
-            chart.chart_screen_rect.height,
-        );
-
-        const close_y = priceToScreenY(
-            self.close,
-            chart.view_min,
-            chart.view_max,
-            chart.chart_screen_rect.y,
-            chart.chart_screen_rect.height,
-        );
-
-        const body_top = @min(open_y, close_y);
-        const body_height = @abs(open_y - close_y);
-
-        const wick_x = wax_x + CANDLE_WIDTH / 2;
-        
-        const high_y = priceToScreenY(
-            self.high,
-            chart.view_min,
-            chart.view_max,
-            chart.chart_screen_rect.y,
-            chart.chart_screen_rect.height,
-        );
-
-        const low_y = priceToScreenY(
-            self.low,
-            chart.view_min,
-            chart.view_max,
-            chart.chart_screen_rect.y,
-            chart.chart_screen_rect.height,
-        );
-
-        const color = if (self.close >= self.open) rl.Color.green else rl.Color.red;
-
-        rl.drawLineEx(
-            .{ .x = wick_x, .y = high_y },
-            .{ .x = wick_x, .y = low_y },
-            2, color,
-        );
-        rl.drawRectangleV(
-            .{ .x = wax_x, .y = body_top },
-            .{ .x = CANDLE_WIDTH, .y = body_height },
-            color,
-        );
-    }
 };
 
 pub const CandleChart = struct {
     const Self = @This();
-    const PRICE_FONT_SIZE = 16;
+    const PRICE_FONT_SIZE: f32 = 14;
+    const TARGET_GRID_LINES: f32 = 8;
+    const CANDLE_GAP_RATIO: f32 = 0;
+    const Y_AXIS_WIDTH: f32 = 70;
+    const CANDLE_SLOT: f32 = 18;
+    const CANDLE_WIDTH: f32 = 16;
 
     candles: []Candle,
+    screen_rect: rl.Rectangle,
     chart_screen_rect: rl.Rectangle,
-    chart_screen_pad: rl.Vector2,
-    camera: rl.Camera2D,
-    mouse_down_pos: ?rl.Vector2 = null,
-    mouse_down_camera_pos: ?rl.Vector2 = null,
-    price_interval: f32 = 30,
-    prev_delta: f32 = -1,
-    view_min: f32 = 0,
-    view_max: f32 = 0,
+
+    view_min: f32,
+    view_max: f32,
+
+    x_offset: f32 = 0,
+    candle_slot: f32 = CANDLE_SLOT,
+    candle_width: f32 = CANDLE_WIDTH,
+
     font: rl.Font,
 
-    pub fn init(chart_screen_rect: rl.Rectangle, candles: []Candle, chart_screen_pad: rl.Vector2) Self {
-        var r = chart_screen_rect;
-        const camera = rl.Camera2D{
-            .target = .{ .x = r.x, .y = r.y },
-            .offset = .{.x = 0, .y = 0},
-            .rotation = 0,
-            .zoom = 1,
+    drag_start_mouse: ?rl.Vector2 = null,
+    drag_start_x_offset: f32 = 0,
+    drag_start_view_min: f32 = 0,
+    drag_start_view_max: f32 = 0,
+
+    pub fn init(screen_rect: rl.Rectangle, candles: []Candle) Self {
+        const font = rl.loadFont("/Users/prateek/Library/Fonts/HackNerdFontMono-Bold.ttf") catch @panic("unable to load font");
+
+        var chart_rect = screen_rect;
+        chart_rect.width -= Y_AXIS_WIDTH;
+
+        const min_max = calcMinMax(candles);
+        const pad = (min_max.@"1" - min_max.@"0") * 0.05;
+
+        return .{
+            .candles = candles,
+            .screen_rect = screen_rect,
+            .chart_screen_rect = chart_rect,
+            .view_min = min_max.@"0" - pad,
+            .view_max = min_max.@"1" + pad,
+            .font = font,
         };
+    }
 
-        r.x = chart_screen_pad.x;
-        r.y = chart_screen_pad.y;
-
+    fn calcMinMax(candles: []Candle) struct { f32, f32 } {
         var min = std.math.floatMax(f32);
         var max = std.math.floatMin(f32);
-
-        for(candles) |c| {
+        for (candles) |c| {
             min = @min(min, c.low);
             max = @max(max, c.high);
         }
-
-        const font = rl.loadFont("/Users/prateek/Library/Fonts/HackNerdFontMono-Bold.ttf") catch @panic("unable to load the font file");
-
-        return .{
-            .chart_screen_rect = r,
-            .chart_screen_pad = chart_screen_pad,
-            .candles = candles,
-            .camera = camera,
-            .view_min = min,
-            .view_max = max,
-            .font = font
-        };
+        return .{ min, max };
     }
 
-    pub inline fn right(self: *const Self) i32 {
-        return @intFromFloat(self.chart_screen_rect.x + self.chart_screen_rect.width);
+    fn candleScreenX(self: *const Self, idx: usize) f32 {
+        const n = @as(f32, @floatFromInt(self.candles.len));
+        const i = @as(f32, @floatFromInt(idx));
+        const slot_from_right = (n - 1.0 - i) + self.x_offset;
+        return self.chart_screen_rect.x + self.chart_screen_rect.width - (slot_from_right + 1.0) * self.candle_slot;
     }
 
-    pub inline fn bottom(self: *const Self) i32 {
-        return @intFromFloat(self.chart_screen_rect.y + self.chart_screen_rect.height);
-    }
+    fn drawGrid(self: *Self) void {
+        const h = self.chart_screen_rect.height;
+        const w = self.chart_screen_rect.width;
+        const chart_top = self.chart_screen_rect.y;
+        const axis_x = self.chart_screen_rect.x + w;
 
-    pub fn drawPriceAxisAndLines(self: *Self) void {
-        var camera = self.camera;
-        camera.target.x = 0;
-        camera.target.y = 0;
+        const price_range = self.view_max - self.view_min;
+        const raw_interval = price_range / TARGET_GRID_LINES;
+        const interval = niceInterval(raw_interval);
+        const first = @ceil(self.view_min / interval) * interval;
 
-        rl.beginMode2D(camera);
-        defer rl.endMode2D();
-        rl.beginScissorMode(
-            @intFromFloat(self.chart_screen_rect.x),
-            @intFromFloat(self.chart_screen_rect.y),
-            @intFromFloat(self.chart_screen_rect.width),
-            @intFromFloat(self.chart_screen_rect.height)
-        );
-        defer rl.endScissorMode();
+        var price = first;
+        while (price <= self.view_max) : (price += interval) {
+            const sy = toScreenY(price, self.view_min, self.view_max, h);
+            const screen_y = chart_top + sy;
 
-        var price: f32 = -10_000;
-
-        const draw_till_y = self.chart_screen_rect.height - self.camera.target.y;
-        
-        while (price <= draw_till_y) : (price += self.price_interval) {
-            const y = Candle.priceToScreenY(price, 0, draw_till_y, 0, draw_till_y);
-            var buf: [12]u8 = undefined;
-            const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{price}) catch @panic("number -> str conversion failed");
-            const pos: rl.Vector2 = .{
-                .x = @as(f32, @floatFromInt(self.right() - @as(i32, @intCast(text.len * 6)))) -
-                    self.chart_screen_pad.x - (@as(f32, @floatFromInt(text.len)) * 2.5),
-                .y = y - (PRICE_FONT_SIZE / 2),
-            };
-
-            rl.drawLine(
-                0,
-                @intFromFloat(y),
-                self.right(),
-                @intFromFloat(y),
-                .{.r = 50, .g = 50, .b = 50, .a = 255},
+            rl.drawLineEx(
+                .{ .x = self.chart_screen_rect.x, .y = screen_y },
+                .{ .x = axis_x, .y = screen_y },
+                1.0,
+                .{ .r = 50, .g = 50, .b = 50, .a = 255 },
             );
 
-            rl.drawTextEx(self.font, text, pos, PRICE_FONT_SIZE, 2, .white);
+            rl.drawLineEx(
+                .{ .x = axis_x, .y = screen_y },
+                .{ .x = axis_x + 4.0, .y = screen_y },
+                1.0,
+                .{ .r = 120, .g = 120, .b = 120, .a = 255 },
+            );
+
+            var buf: [16]u8 = undefined;
+            const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{price}) catch @panic("unable to convert float -> string");
+
+            const label_x = axis_x + 8.0;
+            const label_y = screen_y - PRICE_FONT_SIZE / 2.0;
+            rl.drawTextEx(self.font, text, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, .white);
         }
     }
 
-    fn priceToScreen(self: *Self, price: f32) f32 {
-        const t = (self.view_max - price) /
-            (self.view_max - self.view_min);
-
-        return self.chart_screen_rect.y - self.camera.target.y +
-            t * self.chart_screen_rect.height;
-    }
-
-    pub fn drawCandles(self: *Self) void {
-        rl.beginMode2D(self.camera);
-        defer rl.endMode2D();
+    fn drawCandles(self: *Self) void {
         rl.beginScissorMode(
             @intFromFloat(self.chart_screen_rect.x),
             @intFromFloat(self.chart_screen_rect.y),
             @intFromFloat(self.chart_screen_rect.width),
-            @intFromFloat(self.chart_screen_rect.height)
+            @intFromFloat(self.chart_screen_rect.height),
         );
         defer rl.endScissorMode();
 
-        var i = @as(isize, @intCast(self.candles.len)) - 1;
-        while(i >= 0) : (i -= 1) {
-            self.candles[@intCast(i)].draw(self, self.candles.len - @as(usize, @intCast(i)));
+        for (self.candles, 0..) |*c, i| {
+            const sx = self.candleScreenX(i);
+
+            if (sx + self.candle_width < self.chart_screen_rect.x) continue;
+            if (sx > self.chart_screen_rect.x + self.chart_screen_rect.width) continue;
+
+            const translated_x = sx;
+
+            self.drawCandleAt(c, translated_x);
         }
     }
 
-    pub fn draw(self: *CandleChart) void {
-        rl.drawRectangleRec(self.chart_screen_rect, rl.Color{ .r = 30, .g = 30, .b = 30, .a = 255 });
-        self.drawPriceAxisAndLines();
+    fn drawCandleAt(self: *Self, c: *const Candle, screen_x: f32) void {
+        const w = self.candle_width;
+        const h = self.chart_screen_rect.height;
+        const top = self.chart_screen_rect.y;
+
+        const open_y = top + toScreenY(c.open, self.view_min, self.view_max, h);
+        const close_y = top + toScreenY(c.close, self.view_min, self.view_max, h);
+        const high_y = top + toScreenY(c.high, self.view_min, self.view_max, h);
+        const low_y = top + toScreenY(c.low, self.view_min, self.view_max, h);
+
+        const body_top = @min(open_y, close_y);
+        const body_height = @max(@abs(open_y - close_y), 1.0);
+        const wick_x = screen_x + w / 2.0;
+
+        const color = if (c.close >= c.open) rl.Color.green else rl.Color.red;
+
+        rl.drawLineEx(.{ .x = wick_x, .y = high_y }, .{ .x = wick_x, .y = low_y }, 1.5, color);
+        rl.drawRectangleV(.{ .x = screen_x, .y = body_top }, .{ .x = w, .y = body_height }, color);
+    }
+
+    pub fn draw(self: *Self) void {
+        const axis_x = self.chart_screen_rect.x + self.chart_screen_rect.width;
+
+        rl.drawRectangleRec(self.chart_screen_rect, .{ .r = 20, .g = 20, .b = 25, .a = 255 });
+
+        rl.drawRectangle(
+            @intFromFloat(axis_x),
+            @intFromFloat(self.screen_rect.y),
+            @intFromFloat(Y_AXIS_WIDTH),
+            @intFromFloat(self.screen_rect.height),
+            .{ .r = 15, .g = 15, .b = 20, .a = 255 },
+        );
+        rl.drawLineEx(
+            .{ .x = axis_x, .y = self.screen_rect.y },
+            .{ .x = axis_x, .y = self.screen_rect.y + self.screen_rect.height },
+            1.0,
+            .{ .r = 60, .g = 60, .b = 60, .a = 255 },
+        );
+
+        self.drawGrid();
         self.drawCandles();
     }
 
-    pub fn handleEvents(self: *CandleChart, _: f32) void {
+    pub fn handleEvents(self: *Self) void {
         const mouse = rl.getMousePosition();
-        const wheel_move = rl.getMouseWheelMove();
-        const before = rl.getScreenToWorld2D(mouse, self.camera);
-        const after = rl.getScreenToWorld2D(mouse, self.camera);
 
-        const new_view_min = self.view_min - wheel_move;
-        const new_view_max = self.view_max + wheel_move;
-
-        const d_view = new_view_max - new_view_min;
-
-        if(d_view > 0.1) {
-            self.view_min -= rl.getMouseWheelMove();
-            self.view_max += rl.getMouseWheelMove();
+        const wheel = rl.getMouseWheelMove();
+        if (wheel != 0) {
+            const cursor_price = toPriceY(
+                mouse.y - self.chart_screen_rect.y,
+                self.view_min,
+                self.view_max,
+                self.chart_screen_rect.height,
+            );
+            const factor: f32 = if (wheel > 0) 0.90 else 1.1;
+            const new_min = cursor_price + (self.view_min - cursor_price) * factor;
+            const new_max = cursor_price + (self.view_max - cursor_price) * factor;
+            if (new_max - new_min > 0.001) {
+                self.view_min = new_min;
+                self.view_max = new_max;
+            }
         }
 
-        self.camera.target.x += before.x - after.x;
-        self.camera.target.y += before.y - after.y;
+        if (rl.isMouseButtonPressed(.left)) {
+            self.drag_start_mouse = mouse;
+            self.drag_start_x_offset = self.x_offset;
+            self.drag_start_view_min = self.view_min;
+            self.drag_start_view_max = self.view_max;
+        }
 
-        if(rl.isMouseButtonDown(.left)) {
-            const mouse_down_pos = rl.getMousePosition();
-            if(self.mouse_down_pos == null) {
-                self.mouse_down_pos = mouse_down_pos;
-                self.mouse_down_camera_pos = self.camera.target;
+        if (rl.isMouseButtonDown(.left)) {
+            if (self.drag_start_mouse) |start| {
+                const dx = mouse.x - start.x;
+                const dy = mouse.y - start.y;
+                const price_range = self.drag_start_view_max - self.drag_start_view_min;
+                const price_per_pixel = price_range / self.chart_screen_rect.height;
+                const shift = dy * price_per_pixel;
+
+                self.x_offset = self.drag_start_x_offset - dx / self.candle_slot;
+                self.view_min = self.drag_start_view_min + shift;
+                self.view_max = self.drag_start_view_max + shift;
             }
-            const dx = self.mouse_down_pos.?.x - mouse_down_pos.x;
-            const dy = self.mouse_down_pos.?.y - mouse_down_pos.y;
-            self.camera.target.x = self.mouse_down_camera_pos.?.x + dx / self.camera.zoom;
-            self.camera.target.y = self.mouse_down_camera_pos.?.y + dy / self.camera.zoom;
-        } else if(rl.isMouseButtonReleased(.left)) {
-            self.mouse_down_pos = null;
-            self.mouse_down_camera_pos = null;
+        }
+
+        if (rl.isMouseButtonReleased(.left)) {
+            self.drag_start_mouse = null;
+        }
+
+        if (rl.isKeyPressed(.r)) {
+            const mm = calcMinMax(self.candles);
+            const pad = (mm.@"1" - mm.@"0") * 0.05;
+            self.view_min = mm.@"0" - pad;
+            self.view_max = mm.@"1" + pad;
+            self.x_offset = 0;
+            self.candle_slot = CANDLE_SLOT;
+            self.candle_width = CANDLE_WIDTH;
         }
     }
 };
+
