@@ -1,16 +1,6 @@
 const rl = @import("raylib");
 const std = @import("std");
 
-fn toScreen(value: f32, view_min: f32, view_max: f32, len: f32) f32 {
-    const t = (value - view_min) / (view_max - view_min);
-    return len * (1.0 - t);
-}
-
-fn toValue(screen: f32, view_min: f32, view_max: f32, len: f32) f32 {
-    const t = 1.0 - (screen / len);
-    return view_min + t * (view_max - view_min);
-}
-
 fn niceInterval(raw: f32) f32 {
     if (raw <= 0) return 1;
     const magnitude = std.math.pow(f32, 10.0, @floor(std.math.log10(raw)));
@@ -211,7 +201,17 @@ pub const CandleChart = struct {
 
     fn screenXToIndex(self: *const Self, sx: f32) f32 {
         const t = (sx - self.chart_screen_rect.x) / self.chart_screen_rect.width;
-        return self.view_x.min + t * (self.view_x.max - self.view_x.min);
+        return self.view_x.min + t * self.view_x.range();
+    }
+
+    fn priceToScreenY(self: *const Self, price: f32) f32 {
+        const t = (price - self.view_y.min) / self.view_y.range();
+        return self.chart_screen_rect.height * (1.0 - t);
+    }
+
+    fn screenYToPrice(self: *const Self, y: f32) f32 {
+        const t = 1.0 - ((y - self.chart_screen_rect.y) / self.chart_screen_rect.height);
+        return self.view_y.min + t * self.view_y.range();
     }
 
     fn tickStride(self: *const Self) f32 {
@@ -222,10 +222,8 @@ pub const CandleChart = struct {
     }
 
     fn drawYAxis(self: *Self) void {
-        const h = self.chart_screen_rect.height;
-        const w = self.chart_screen_rect.width;
         const chart_top = self.chart_screen_rect.y;
-        const axis_x = self.chart_screen_rect.x + w;
+        const right = self.chartRight();
 
         const price_range = self.view_y.max - self.view_y.min;
         const raw_interval = price_range / TARGET_Y_AXIS_COUNT;
@@ -234,19 +232,19 @@ pub const CandleChart = struct {
 
         var price = first;
         while (price <= self.view_y.max) : (price += interval) {
-            const sy = toScreen(price, self.view_y.min, self.view_y.max, h);
+            const sy = self.priceToScreenY(price);
             const screen_y = chart_top + sy;
 
             rl.drawLineEx(
                 .{ .x = self.chart_screen_rect.x, .y = screen_y },
-                .{ .x = axis_x, .y = screen_y },
+                .{ .x = right, .y = screen_y },
                 1.0,
                 .{ .r = 50, .g = 50, .b = 50, .a = 255 },
             );
 
             rl.drawLineEx(
-                .{ .x = axis_x, .y = screen_y },
-                .{ .x = axis_x + 4.0, .y = screen_y },
+                .{ .x = right, .y = screen_y },
+                .{ .x = right + 4.0, .y = screen_y },
                 1.0,
                 .{ .r = 120, .g = 120, .b = 120, .a = 255 },
             );
@@ -254,7 +252,7 @@ pub const CandleChart = struct {
             var buf: [16]u8 = undefined;
             const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{price}) catch @panic("unable to convert float -> string");
 
-            const label_x = axis_x + 8.0;
+            const label_x = right + 8.0;
             const label_y = screen_y - PRICE_FONT_SIZE / 2.0;
             rl.drawTextEx(self.font, text, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, .white);
         }
@@ -266,6 +264,10 @@ pub const CandleChart = struct {
 
     inline fn chartRight(self: *const Self) f32 {
         return self.chart_screen_rect.x + self.chart_screen_rect.width;
+    }
+
+    inline fn chartBottom(self: *const Self) f32 {
+        return self.chart_screen_rect.y + self.chart_screen_rect.height;
     }
 
     fn drawXAxis(self: *Self) void {
@@ -340,13 +342,12 @@ pub const CandleChart = struct {
     }
 
     fn drawCandleAt(self: *Self, c: *const Candle, screen_x: f32, w: f32) void {
-        const h = self.chart_screen_rect.height;
         const top = self.chart_screen_rect.y;
 
-        const open_y = top + toScreen(c.open, self.view_y.min, self.view_y.max, h);
-        const close_y = top + toScreen(c.close, self.view_y.min, self.view_y.max, h);
-        const high_y = top + toScreen(c.high, self.view_y.min, self.view_y.max, h);
-        const low_y = top + toScreen(c.low, self.view_y.min, self.view_y.max, h);
+        const open_y = top + self.priceToScreenY(c.open);
+        const close_y = top + self.priceToScreenY(c.close);
+        const high_y = top + self.priceToScreenY(c.high);
+        const low_y = top + self.priceToScreenY(c.low);
 
         const body_top = @min(open_y, close_y);
         const body_height = @max(@abs(open_y - close_y), 1.0);
@@ -358,8 +359,41 @@ pub const CandleChart = struct {
         rl.drawRectangleV(.{ .x = screen_x, .y = body_top }, .{ .x = w, .y = body_height }, color);
     }
 
+    fn drawCrosshair(self: *Self) void {
+        const mouse = rl.getMousePosition();
+        const crosshair_color = rl.Color{ .r = 230, .g = 0, .b = 180, .a = 255 };
+        const dash_size = 3;
+        const space_size = 3;
+        rl.drawLineDashed(
+            .{ .x = self.chart_screen_rect.x, .y = mouse.y },
+            .{ .x = self.chartRight(), .y = mouse.y },
+            dash_size, space_size, crosshair_color
+        );
+
+        rl.drawLineDashed(
+            .{ .x = mouse.x, .y = self.chart_screen_rect.y },
+            .{ .x = mouse.x, .y = self.chartBottom() },
+            dash_size, space_size, crosshair_color
+        );
+
+        var buf: [16]u8 = undefined;
+        const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{self.screenYToPrice(mouse.y)}) catch @panic("unable to convert float -> string");
+
+        const label_x = self.chartRight() + 8.0;
+        const label_y = mouse.y - PRICE_FONT_SIZE / 2.0;
+        const pad = 4;
+        
+        rl.drawRectangleV(
+            .{ .x = self.chartRight(), .y = label_y - pad },
+            .{ .x = Y_AXIS_WIDTH, .y = PRICE_FONT_SIZE + (pad * 2) },
+            .{ .r = 0, .g = 0, .b = 0, .a = 255 }
+        );
+
+        rl.drawTextEx(self.font, text, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, crosshair_color);
+    }
+
     pub fn draw(self: *Self) void {
-        const axis_x = self.chart_screen_rect.x + self.chart_screen_rect.width;
+        const right = self.chartRight();
 
         rl.drawRectangleRec(self.chart_screen_rect, .{ .r = 20, .g = 20, .b = 25, .a = 255 });
 
@@ -367,7 +401,7 @@ pub const CandleChart = struct {
         const axis_border_color: rl.Color = .{ .r = 160, .g = 60, .b = 160, .a = 255 };
 
         rl.drawRectangle(
-            @intFromFloat(axis_x),
+            @intFromFloat(right),
             @intFromFloat(self.screen_rect.y),
             @intFromFloat(Y_AXIS_WIDTH),
             @intFromFloat(self.chart_screen_rect.height),
@@ -383,20 +417,21 @@ pub const CandleChart = struct {
         );
 
         rl.drawLineEx(
-            .{ .x = axis_x, .y = self.screen_rect.y },
-            .{ .x = axis_x, .y = self.screen_rect.y + self.chart_screen_rect.height },
+            .{ .x = right, .y = self.screen_rect.y },
+            .{ .x = right, .y = self.screen_rect.y + self.chart_screen_rect.height },
             1.0, axis_border_color,
         );
 
         rl.drawLineEx(
             .{ .x = self.chart_screen_rect.x, .y = self.chart_screen_rect.y + self.chart_screen_rect.height },
-            .{ .x = axis_x, .y = self.chart_screen_rect.y + self.chart_screen_rect.height },
+            .{ .x = right, .y = self.chart_screen_rect.y + self.chart_screen_rect.height },
             1.0, axis_border_color,
         );
 
         self.drawYAxis();
         self.drawXAxis();
         self.drawCandles();
+        self.drawCrosshair();
     }
 
     pub fn scroll(
@@ -433,6 +468,17 @@ pub const CandleChart = struct {
     }
 
     pub fn handleEvents(self: *Self) void {
+        if(rl.isWindowResized()) {
+            self.screen_rect.height = @floatFromInt(rl.getScreenHeight());
+            self.screen_rect.width = @floatFromInt(rl.getScreenWidth());
+
+            self.chart_screen_rect.height = self.screen_rect.height;
+            self.chart_screen_rect.width = self.screen_rect.width;
+
+            self.chart_screen_rect.width -= Y_AXIS_WIDTH;
+            self.chart_screen_rect.height -= X_AXIS_HEIGHT;
+        }
+
         const mouse = rl.getMousePosition();
         const wheel = rl.getMouseWheelMoveV();
 
