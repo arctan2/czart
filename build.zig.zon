@@ -36,6 +36,10 @@
             .url = "git+https://github.com/raylib-zig/raylib-zig?ref=devel#97be2c7ae646a2f09856604b138c427c0af1b952",
             .hash = "raylib_zig-6.0.0-KE8REDJ4BQBu7lKwYNt6R4j5ywPeS37zqW6zrtjCcRwH",
         },
+        .csvzero = .{
+            .url = "git+https://github.com/peymanmortazavi/csv-zero.git#8f90ee1e9316dbf399fe6a10627f02441ef94c7a",
+            .hash = "csvzero-0.2.0-YQXXvKbEAADM8gtEK4PuCjFnAMzT_x-O0cfI7ZRJc1Qh",
+        },
     },
     .paths = .{
         "build.zig",

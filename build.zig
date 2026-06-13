@@ -25,6 +25,9 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkLibrary(raylib_artifact);
     exe.root_module.addImport("raylib", raylib);
     exe.root_module.addImport("raygui", raygui);
+    
+    const csvzero = b.dependency("csvzero", .{});
+    exe.root_module.addImport("csvzero", csvzero.module("csvzero"));
 
     b.installArtifact(exe);
 

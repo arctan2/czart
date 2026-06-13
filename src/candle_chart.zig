@@ -19,28 +19,97 @@ fn niceInterval(raw: f32) f32 {
     return nice * magnitude;
 }
 
+const MonthNames = [_][]const u8{
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+};
+
+pub const DateFormatter = struct {
+    allocator: std.mem.Allocator,
+
+    pub fn toNumericDash(self: *const DateFormatter, epoch_seconds: i64) ![]u8 {
+        const epoch_days = @divFloor(epoch_seconds, std.time.epoch.secs_per_day);
+        const epoch_day = std.time.epoch.EpochDay{ .day = @intCast(epoch_days) };
+        const year_and_day = epoch_day.calculateYearDay()();
+        const month_and_day = year_and_day.calculateMonthAndDay();
+
+        return try std.fmt.allocPrint(self.allocator, "{d:0>2}-{d:0>2}-{d:0>4}", .{
+            month_and_day.day_index + 1,
+            month_and_day.month.numeric(),
+            year_and_day.year,
+        });
+    }
+
+    pub fn toTextual(self: *const DateFormatter, epoch_seconds: i64) ![]u8 {
+        const epoch_days = @divFloor(epoch_seconds, std.time.epoch.secs_per_day);
+        const epoch_day = std.time.epoch.EpochDay{ .day = @intCast(epoch_days) };
+        const year_and_day = epoch_day.calculateYearDay();
+        const month_and_day = year_and_day.calculateMonthDay();
+
+        const month_idx = month_and_day.month.numeric() - 1;
+
+        return try std.fmt.allocPrint(self.allocator, "{s} {d}, {d}", .{
+            MonthNames[month_idx],
+            month_and_day.day_index + 1,
+            year_and_day.year,
+        });
+    }
+
+    pub fn toTextualTime(self: *const DateFormatter, epoch_seconds: i64) ![]u8 {
+        const secs_per_day: i64 = std.time.epoch.secs_per_day;
+        const epoch_days = @divFloor(epoch_seconds, secs_per_day);
+        const epoch_day = std.time.epoch.EpochDay{ .day = @intCast(epoch_days) };
+        const year_and_day = epoch_day.calculateYearDay();
+        const month_and_day = year_and_day.calculateMonthDay();
+        const month_idx = month_and_day.month.numeric() - 1;
+
+        var secs_of_day = @mod(epoch_seconds, secs_per_day);
+        if (secs_of_day < 0) secs_of_day += secs_per_day;
+
+        const hours: u64 = @intCast(@divFloor(secs_of_day, 3600));
+        const minutes: u64 = @intCast(@divFloor(@mod(secs_of_day, 3600), 60));
+
+        return try std.fmt.allocPrint(self.allocator, "{s} {d} {d:0>2}:{d:0>2}", .{
+            MonthNames[month_idx],
+            month_and_day.day_index + 1,
+            hours,
+            minutes,
+        });
+    }
+};
+
 pub const Candle = struct {
     open: f32,
     close: f32,
     low: f32,
     high: f32,
     timestamp: u64,
+    volume: f32
 };
 
 pub const Timeframe = enum {
-    d1,
-    d5,
     m1,
-    m3,
-    y1,
+    m5,
+    m30,
+    h1,
+    d1,
+    d7,
 
     pub fn getMsDelta(self: Timeframe) f32 {
         return switch (self) {
+            .m1 => 60_000.0,
+            .m5 => 300_000.0,
+            .m30 => 1_800_000.0,
+            .h1 => 3_600_000.0,
             .d1 => 86_400_000.0,
-            .d5 => 432_000_000.0,
-            .m1 => 1_814_400_000.0,
-            .m3 => 5_443_200_000.0,
-            .y1 => 21_772_800_000.0,
+            .d7 => 604_800_000.0,
+        };
+    }
+
+    fn showsTime(self: Timeframe) bool {
+        return switch (self) {
+            .m1, .m5, .m30, .h1 => true,
+            .d1, .d7 => false,
         };
     }
 };
@@ -59,15 +128,15 @@ const MinMax = struct {
 pub const CandleChart = struct {
     const Self = @This();
     const PRICE_FONT_SIZE: f32 = 14;
-    const TARGET_GRID_LINES: f32 = 10;
+    const TARGET_Y_AXIS_COUNT: f32 = 10;
     const Y_AXIS_WIDTH: f32 = 70;
     const X_AXIS_HEIGHT: f32 = 30;
     const CANDLE_SLOT: f32 = 20;
     const CANDLE_WIDTH: f32 = 18;
-    const MIN_TICK_SPACING: f32 = 500.0;
+    const MIN_TICK_SPACING: f32 = 300.0;
 
     candles: []Candle,
-    timeframe: Timeframe = .d1,
+    timeframe: Timeframe = .m1,
     screen_rect: rl.Rectangle,
     chart_screen_rect: rl.Rectangle,
     zoom_sensitivity: f32 = 0.1,
@@ -84,8 +153,9 @@ pub const CandleChart = struct {
     drag_start_mouse: ?rl.Vector2 = null,
     drag_start_view_x: MinMax = .{ .min = 0, .max = 0 },
     drag_start_view_y: MinMax = .{ .min = 0, .max = 0 },
+    date_formatter: DateFormatter,
 
-    pub fn init(screen_rect: rl.Rectangle, candles: []Candle, pad: f32) Self {
+    pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []Candle, pad: f32) Self {
         const font = rl.loadFont("/Users/prateek/Library/Fonts/HackNerdFontMono-Bold.ttf") catch @panic("unable to load font");
 
         var chart_rect = screen_rect;
@@ -104,40 +174,57 @@ pub const CandleChart = struct {
             .view_y = min_max.y,
             .font = font,
             .pad = pad,
+            .date_formatter = DateFormatter{ .allocator = allocator }
         };
     }
 
     fn calcMinMax(candles: []Candle) struct { y: MinMax, x: MinMax } {
         var y: MinMax = .{ .min = std.math.floatMax(f32), .max = std.math.floatMin(f32) };
-        var x: MinMax = .{ .min = std.math.floatMax(f32), .max = std.math.floatMin(f32) };
         for (candles) |c| {
-            const ts: f32 = @floatFromInt(c.timestamp);
             y.min = @min(y.min, c.low);
             y.max = @max(y.max, c.high);
-            x.min = @min(x.min, ts);
-            x.max = @max(x.max, ts);
         }
+        const last_index: f32 = if (candles.len == 0) 0 else @floatFromInt(candles.len - 1);
+        const x: MinMax = .{ .min = 0, .max = last_index };
         return .{ .y = y, .x = x };
     }
 
-    fn tsToScreenX(self: *const Self, ts: f32) f32 {
-        const t = (ts - self.view_x.min) / (self.view_x.max - self.view_x.min);
+    fn indexToTs(self: *const Self, index: f32) i64 {
+        if (self.candles.len == 0) return 0;
+        const ms_per_candle = self.timeframe.getMsDelta();
+        const base_index: usize = @intFromFloat(@max(0, @min(index, @as(f32, @floatFromInt(self.candles.len - 1)))));
+        const base_ts: i64 = @intCast(self.candles[base_index].timestamp);
+        const frac = index - @as(f32, @floatFromInt(base_index));
+        const delta_ms: i64 = @intFromFloat(frac * ms_per_candle);
+        return base_ts + delta_ms;
+    }
+
+    fn indexToScreenX(self: *const Self, index: f32) f32 {
+        const range = self.view_x.max - self.view_x.min;
+        const t = (index - self.view_x.min) / range;
         return self.chart_screen_rect.x + t * self.chart_screen_rect.width;
     }
 
-    fn screenXToTs(self: *const Self, sx: f32) f32 {
+    fn screenXToIndex(self: *const Self, sx: f32) f32 {
         const t = (sx - self.chart_screen_rect.x) / self.chart_screen_rect.width;
         return self.view_x.min + t * (self.view_x.max - self.view_x.min);
     }
 
-    fn drawGrid(self: *Self) void {
+    fn tickStride(self: *const Self) f32 {
+        const index_range = self.view_x.max - self.view_x.min;
+        const candles_per_pixel = index_range / self.chart_screen_rect.width;
+        const min_stride = candles_per_pixel * MIN_TICK_SPACING;
+        return niceInterval(min_stride);
+    }
+
+    fn drawYAxis(self: *Self) void {
         const h = self.chart_screen_rect.height;
         const w = self.chart_screen_rect.width;
         const chart_top = self.chart_screen_rect.y;
         const axis_x = self.chart_screen_rect.x + w;
 
         const price_range = self.view_y.max - self.view_y.min;
-        const raw_interval = price_range / TARGET_GRID_LINES;
+        const raw_interval = price_range / TARGET_Y_AXIS_COUNT;
         const interval = niceInterval(raw_interval);
         const first = @ceil(self.view_y.min / interval) * interval;
 
@@ -175,15 +262,13 @@ pub const CandleChart = struct {
         const axis_y = self.chart_screen_rect.y + self.chart_screen_rect.height;
         const label_y = axis_y + 8.0;
 
-        const ts_range = self.view_x.max - self.view_x.min;
-        const ticks_that_fit = self.chart_screen_rect.width / MIN_TICK_SPACING;
-        const raw_interval = ts_range / ticks_that_fit;
-        const interval = niceInterval(raw_interval);
+        const stride = self.tickStride();
+        const first_tick = @ceil(self.view_x.min / stride) * stride;
+        const shows_time = self.timeframe.showsTime();
 
-        const first_tick = @ceil(self.view_x.min / interval) * interval;
-        var ts: f32 = first_tick;
-        while (ts <= self.view_x.max) : (ts += interval) {
-            const sx = self.tsToScreenX(ts);
+        var index: f32 = first_tick;
+        while (index <= self.view_x.max) : (index += stride) {
+            const sx = self.indexToScreenX(index);
             if (sx < chart_left or sx > chart_right) continue;
 
             rl.drawLineEx(
@@ -200,11 +285,19 @@ pub const CandleChart = struct {
                 .{ .r = 120, .g = 120, .b = 120, .a = 255 },
             );
 
+            const ts = self.indexToTs(index);
+            const epoch_seconds = @divFloor(ts, 1000);
+
             var buf: [24]u8 = undefined;
-            const text = std.fmt.bufPrintZ(&buf, "{d:.0}", .{ts}) catch continue;
-            const text_size = rl.measureTextEx(self.font, text, PRICE_FONT_SIZE, 1);
+            const text = (if (shows_time)
+                self.date_formatter.toTextualTime(epoch_seconds)
+            else
+                self.date_formatter.toTextual(epoch_seconds)) catch continue;
+            defer self.date_formatter.allocator.free(text);
+            const textZ = std.fmt.bufPrintZ(&buf, "{s}", .{text}) catch continue;
+            const text_size = rl.measureTextEx(self.font, textZ, PRICE_FONT_SIZE, 1);
             const label_x = sx - text_size.x / 2.0;
-            rl.drawTextEx(self.font, text, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, .white);
+            rl.drawTextEx(self.font, textZ, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, .white);
         }
     }
 
@@ -217,19 +310,23 @@ pub const CandleChart = struct {
         );
         defer rl.endScissorMode();
 
-        for (self.candles) |*c| {
-            const ts: f32 = @floatFromInt(c.timestamp);
-            const sx = self.tsToScreenX(ts) - self.candle_width / 2.0;
+        const index_range = self.view_x.max - self.view_x.min;
+        const slot_px = self.chart_screen_rect.width / index_range;
+        // const w = @min(self.candle_width, slot_px * 0.8);
+        const w = slot_px * 0.8;
 
-            if (sx + self.candle_width < self.chart_screen_rect.x) continue;
+        for (self.candles, 0..self.candles.len) |*c, i| {
+            const idx: f32 = @floatFromInt(i);
+            const sx = self.indexToScreenX(idx) - w / 2.0;
+
+            if (sx + w < self.chart_screen_rect.x) continue;
             if (sx > self.chart_screen_rect.x + self.chart_screen_rect.width) continue;
 
-            self.drawCandleAt(c, sx);
+            self.drawCandleAt(c, sx, w);
         }
     }
 
-    fn drawCandleAt(self: *Self, c: *const Candle, screen_x: f32) void {
-        const w = self.candle_width;
+    fn drawCandleAt(self: *Self, c: *const Candle, screen_x: f32, w: f32) void {
         const h = self.chart_screen_rect.height;
         const top = self.chart_screen_rect.y;
 
@@ -284,7 +381,7 @@ pub const CandleChart = struct {
             1.0, axis_border_color,
         );
 
-        self.drawGrid();
+        self.drawYAxis();
         self.drawXAxis();
         self.drawCandles();
     }
@@ -295,46 +392,18 @@ pub const CandleChart = struct {
         change_candle_slot: bool,
         change_time_axis: bool,
     ) void {
-        const mid_x = (self.chart_screen_rect.x + self.chart_screen_rect.width) / 2 + self.chart_screen_rect.x;
-        const cursor_ts = self.screenXToTs(mid_x);
-        if (change_candle_slot) {
-            const delta: f32 = if (wheel > 0) 2 else -2;
-            const new_slot = self.candle_slot + delta;
-            if (new_slot >= CANDLE_SLOT and new_slot <= 500.0) {
-                const zoom_factor = self.candle_slot / new_slot;
-                const new_min = cursor_ts + (self.view_x.min - cursor_ts) * zoom_factor;
-                const new_max = cursor_ts + (self.view_x.max - cursor_ts) * zoom_factor;
-                const diff = new_max - new_min;
-                if (diff > 0.0001 and diff < 3_900_000_000) {
-                    self.view_x.min = new_min;
-                    self.view_x.max = new_max;
-                    const ratio = self.candle_width / self.candle_width;
-                    self.candle_slot = new_slot;
-                    self.candle_width = new_slot * ratio;
-                }
-            }
-        } else if (change_time_axis) {
+        const mid_x = self.chart_screen_rect.x + self.chart_screen_rect.width / 2;
+        const cursor_index = self.screenXToIndex(mid_x);
+        if (change_candle_slot or change_time_axis) {
             const factor: f32 = 1 + if (wheel > 0) -self.zoom_sensitivity else self.zoom_sensitivity;
-            const new_min = cursor_ts + (self.view_x.min - cursor_ts) * factor;
-            const new_max = cursor_ts + (self.view_x.max - cursor_ts) * factor;
+            const new_min = cursor_index + (self.view_x.min - cursor_index) * factor;
+            const new_max = cursor_index + (self.view_x.max - cursor_index) * factor;
             const diff = new_max - new_min;
 
-            const ts_per_pixel = diff / self.chart_screen_rect.width;
-            const time_per_candle_step: f32 = self.timeframe.getMsDelta(); 
-            const projected_step_width_pixels = time_per_candle_step / ts_per_pixel;
-
-            if (diff > 0.001 and diff < 3_900_000_000 and projected_step_width_pixels > self.candle_width) {
-                const min_changed = @abs(self.view_x.min - new_min) > 0.01;
-                const max_changed = @abs(self.view_x.max - new_max) > 0.01;
-
-                if (!min_changed or !max_changed) {
-                    const kick = time_per_candle_step * 0.1; 
-                    self.view_x.min = new_min - kick;
-                    self.view_x.max = new_max + kick;
-                } else {
-                    self.view_x.min = new_min;
-                    self.view_x.max = new_max;
-                }
+            const max_candles_in_view: f32 = @floatFromInt(self.candles.len * 2 + 64);
+            if (diff > 4 and diff < max_candles_in_view) {
+                self.view_x.min = new_min;
+                self.view_x.max = new_max;
             }
         } else {
             const cursor_price = (self.view_y.max - self.view_y.min) / 2 + self.view_y.min;
@@ -368,9 +437,9 @@ pub const CandleChart = struct {
                 const dx = mouse.x - start.x;
                 const dy = mouse.y - start.y;
 
-                const ts_per_pixel = (self.drag_start_view_x.max - self.drag_start_view_x.min) / self.chart_screen_rect.width;
-                self.view_x.min = self.drag_start_view_x.min - dx * ts_per_pixel;
-                self.view_x.max = self.drag_start_view_x.max - dx * ts_per_pixel;
+                const index_per_pixel = (self.drag_start_view_x.max - self.drag_start_view_x.min) / self.chart_screen_rect.width;
+                self.view_x.min = self.drag_start_view_x.min - dx * index_per_pixel;
+                self.view_x.max = self.drag_start_view_x.max - dx * index_per_pixel;
 
                 const price_per_pixel = (self.drag_start_view_y.max - self.drag_start_view_y.min) / self.chart_screen_rect.height;
                 self.view_y.min = self.drag_start_view_y.min + dy * price_per_pixel;
