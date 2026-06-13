@@ -123,6 +123,10 @@ const MinMax = struct {
         self.max += p;
         self.min -= p;
     }
+
+    inline fn range(self: *const MinMax) f32 {
+        return self.max - self.min;
+    }
 };
 
 pub const CandleChart = struct {
@@ -139,7 +143,7 @@ pub const CandleChart = struct {
     timeframe: Timeframe = .m1,
     screen_rect: rl.Rectangle,
     chart_screen_rect: rl.Rectangle,
-    zoom_sensitivity: f32 = 0.1,
+    zoom_sensitivity: f32 = 0.05,
 
     view_x: MinMax,
     view_y: MinMax,
@@ -200,7 +204,7 @@ pub const CandleChart = struct {
     }
 
     fn indexToScreenX(self: *const Self, index: f32) f32 {
-        const range = self.view_x.max - self.view_x.min;
+        const range = self.view_x.range();
         const t = (index - self.view_x.min) / range;
         return self.chart_screen_rect.x + t * self.chart_screen_rect.width;
     }
@@ -256,9 +260,15 @@ pub const CandleChart = struct {
         }
     }
 
+    inline fn chartLeft(self: *const Self) f32 {
+        return self.chart_screen_rect.x;
+    }
+
+    inline fn chartRight(self: *const Self) f32 {
+        return self.chart_screen_rect.x + self.chart_screen_rect.width;
+    }
+
     fn drawXAxis(self: *Self) void {
-        const chart_left = self.chart_screen_rect.x;
-        const chart_right = self.chart_screen_rect.x + self.chart_screen_rect.width;
         const axis_y = self.chart_screen_rect.y + self.chart_screen_rect.height;
         const label_y = axis_y + 8.0;
 
@@ -269,7 +279,7 @@ pub const CandleChart = struct {
         var index: f32 = first_tick;
         while (index <= self.view_x.max) : (index += stride) {
             const sx = self.indexToScreenX(index);
-            if (sx < chart_left or sx > chart_right) continue;
+            if (sx < self.chartLeft() or sx > self.chartRight()) continue;
 
             rl.drawLineEx(
                 .{ .x = sx, .y = self.chart_screen_rect.y },
@@ -289,10 +299,13 @@ pub const CandleChart = struct {
             const epoch_seconds = @divFloor(ts, 1000);
 
             var buf: [24]u8 = undefined;
-            const text = (if (shows_time)
-                self.date_formatter.toTextualTime(epoch_seconds)
-            else
-                self.date_formatter.toTextual(epoch_seconds)) catch continue;
+            const text = (
+                if (shows_time)
+                    self.date_formatter.toTextualTime(epoch_seconds)
+                else
+                    self.date_formatter.toTextual(epoch_seconds)
+            ) catch continue;
+
             defer self.date_formatter.allocator.free(text);
             const textZ = std.fmt.bufPrintZ(&buf, "{s}", .{text}) catch continue;
             const text_size = rl.measureTextEx(self.font, textZ, PRICE_FONT_SIZE, 1);
@@ -408,6 +421,7 @@ pub const CandleChart = struct {
         } else {
             const cursor_price = (self.view_y.max - self.view_y.min) / 2 + self.view_y.min;
             const factor: f32 = 1 + if (wheel > 0) -self.zoom_sensitivity else self.zoom_sensitivity;
+
             const new_min = cursor_price + (self.view_y.min - cursor_price) * factor;
             const new_max = cursor_price + (self.view_y.max - cursor_price) * factor;
             const diff = new_max - new_min;
@@ -420,16 +434,21 @@ pub const CandleChart = struct {
 
     pub fn handleEvents(self: *Self) void {
         const mouse = rl.getMousePosition();
-        const wheel = rl.getMouseWheelMove();
+        const wheel = rl.getMouseWheelMoveV();
 
-        if (wheel != 0) {
-            self.scroll(wheel, rl.isKeyDown(.left_shift), rl.isKeyDown(.left_control));
-        }
+        const wdx = wheel.x * self.zoom_sensitivity;
+        const wdy = wheel.y * self.zoom_sensitivity;
 
-        if (rl.isMouseButtonPressed(.left)) {
-            self.drag_start_mouse = mouse;
-            self.drag_start_view_x = self.view_x;
-            self.drag_start_view_y = self.view_y;
+        const deadzone = 0.01;
+
+        if (@abs(wdx) > deadzone or @abs(wdy) > deadzone) {
+            if (@abs(wdx) > @abs(wdy)) {
+                const scroll_x_multiplier = self.view_x.range() / 10;
+                self.view_x.min -= wdx * scroll_x_multiplier;
+                self.view_x.max -= wdx * scroll_x_multiplier;
+            } else {
+                self.scroll(wdy, rl.isKeyDown(.left_shift), rl.isKeyDown(.left_control));
+            }
         }
 
         if (rl.isMouseButtonDown(.left)) {
@@ -444,6 +463,10 @@ pub const CandleChart = struct {
                 const price_per_pixel = (self.drag_start_view_y.max - self.drag_start_view_y.min) / self.chart_screen_rect.height;
                 self.view_y.min = self.drag_start_view_y.min + dy * price_per_pixel;
                 self.view_y.max = self.drag_start_view_y.max + dy * price_per_pixel;
+            } else {
+                self.drag_start_mouse = mouse;
+                self.drag_start_view_x = self.view_x;
+                self.drag_start_view_y = self.view_y;
             }
         }
 

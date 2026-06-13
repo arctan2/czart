@@ -78,13 +78,13 @@ pub fn main(init: std.process.Init) !void {
     var candles = try std.ArrayList(Candle).initCapacity(gpa, 512);
     defer candles.deinit(gpa);
 
-    var rows: usize = 0;
+    var rows: usize = 2500;
 
-    for(0..6) |_| {
+    for(0..6 * 4000) |_| {
         _ = it.next() catch {};
     }
 
-    while (true) {
+    while (rows > 0) : (rows -= 1) {
         var raw_date = it.next() catch |err| switch (err) {
             error.EOF => break,
             else => return err,
@@ -110,6 +110,8 @@ pub fn main(init: std.process.Init) !void {
             else => return err,
         };
 
+        std.debug.print("raw_date = {s}\n", .{raw_date.unescaped()});
+
         const timestamp = try parseDatetimeToTimestamp(raw_date.unescaped());
         const open = try std.fmt.parseFloat(f32, raw_open.unescaped());
         const high = try std.fmt.parseFloat(f32, raw_high.unescaped());
@@ -127,12 +129,6 @@ pub fn main(init: std.process.Init) !void {
         };
 
         try candles.append(gpa, candle);
-
-        rows += 1;
-
-        if(rows == 1000) {
-            break;
-        }
     }
 
     var chart: CandleChart = .init(
