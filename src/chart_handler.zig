@@ -1,25 +1,28 @@
 const rl = @import("raylib");
 const std = @import("std");
 const charts = @import("charts");
+const indicators = @import("indicators");
 const common = @import("common");
-const Layout = @import("layout").Layout;
+const Layout = @import("layout");
 const Events = @import("events").Events;
 const Timeframe = common.Timeframe;
 const MinMax = common.MinMax;
 const DateFormatter = common.DateFormatter;
-const Candle = charts.CandleChart.Candle;
 
 pub const ChartHandler = struct {
     const Self = @This();
+    const CHART_BG: rl.Color = .{ .r = 20, .g = 20, .b = 25, .a = 255 };
+    const GRID_COLOR: rl.Color = .{ .r = 50, .g = 50, .b = 50, .a = 255 };
 
     timeframe: Timeframe = .m1,
     layout: Layout,
     events: Events,
     candle_chart: charts.CandleChart,
+    sma: indicators.SMA,
 
     date_formatter: DateFormatter,
 
-    pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []Candle) Self {
+    pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []charts.CandleChart.Candle) Self {
         const candle_chart: charts.CandleChart = .{ .candles = candles };
         const layout: Layout = .init(screen_rect, candle_chart.calcMinMax());
 
@@ -27,8 +30,13 @@ pub const ChartHandler = struct {
             .layout = layout,
             .candle_chart = candle_chart,
             .events = .{},
+            .sma = .init(allocator, candles, 50),
             .date_formatter = DateFormatter{ .allocator = allocator }
         };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        self.sma.deinit(allocator);
     }
 
     fn drawYAxis(self: *Self) void {
@@ -49,7 +57,7 @@ pub const ChartHandler = struct {
                 .{ .x = self.layout.chartLeft(), .y = screen_y },
                 .{ .x = right, .y = screen_y },
                 1.0,
-                .{ .r = 50, .g = 50, .b = 50, .a = 255 },
+                GRID_COLOR
             );
 
             rl.drawLineEx(
@@ -85,7 +93,7 @@ pub const ChartHandler = struct {
                 .{ .x = sx, .y = self.layout.chart_screen_rect.y },
                 .{ .x = sx, .y = axis_y },
                 1.0,
-                .{ .r = 50, .g = 50, .b = 50, .a = 255 },
+                GRID_COLOR
             );
 
             rl.drawLineEx(
@@ -114,46 +122,10 @@ pub const ChartHandler = struct {
         }
     }
 
-    fn computeSMA(self: *Self, points: []rl.Vector2, period: usize) void {
-        var sum: f32 = 0;
-
-        for (self.candles[0..period]) |candle| {
-            sum += candle.close;
-        }
-
-        points[0] = .{
-            .x = self.indexToScreenX(@floatFromInt(period - 1)),
-            .y = self.priceToScreenY(sum / @as(f32, @floatFromInt(period))),
-        };
-
-        for (period..self.candles.len) |i| {
-            sum += self.candles[i].close;
-            sum -= self.candles[i - period].close;
-
-            points[i - period + 1] = .{
-                .x = self.indexToScreenX(@floatFromInt(i)),
-                .y = self.priceToScreenY(sum / @as(f32, @floatFromInt(period))),
-            };
-        }
-    }
-
-    fn drawSMA(self: *Self) void {
-        rl.beginScissorMode(
-            @intFromFloat(self.layout.chartLeft()),
-            @intFromFloat(self.layout.chartTop()),
-            @intFromFloat(self.layout.chart_screen_rect.width),
-            @intFromFloat(self.layout.chart_screen_rect.height),
-        );
-        defer rl.endScissorMode();
-
-        self.computeSMA(self.sma_50_points, 50);
-        rl.drawSplineCatmullRom(self.sma_50_points, 1, .blue);
-    }
-
     pub fn draw(self: *Self, _: std.mem.Allocator) void {
         const right = self.layout.chartRight();
 
-        rl.drawRectangleRec(self.layout.chart_screen_rect, .{ .r = 20, .g = 20, .b = 25, .a = 255 });
+        rl.drawRectangleRec(self.layout.chart_screen_rect, CHART_BG);
 
         const axis_bg: rl.Color = .{ .r = 30, .g = 20, .b = 30, .a = 255 };
         const axis_border_color: rl.Color = .{ .r = 160, .g = 60, .b = 160, .a = 255 };
@@ -190,6 +162,7 @@ pub const ChartHandler = struct {
         self.drawXAxis();
         self.candle_chart.drawCandles(&self.layout);
         self.candle_chart.drawCrosshair(&self.layout, &self.date_formatter);
+        self.sma.draw(&self.layout, self.candle_chart.candles);
     }
 
 

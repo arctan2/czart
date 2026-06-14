@@ -1,6 +1,6 @@
 const rl = @import("raylib");
 const common = @import("common");
-const Layout = @import("layout").Layout;
+const Layout = @import("layout");
 const MinMax = common.MinMax;
 
 pub const Events = struct {

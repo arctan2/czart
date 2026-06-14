@@ -53,6 +53,19 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const indicators = b.createModule(.{
+        .root_source_file = b.path("src/indicators/indicators.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "common", .module = common },
+            .{ .name = "layout", .module = layout },
+            .{ .name = "events", .module = events },
+            .{ .name = "charts", .module = charts },
+            .{ .name = "raylib", .module = raylib },
+        },
+    });
+
     const exe = b.addExecutable(.{
         .name = "chart",
         .root_module = b.createModule(.{
@@ -64,6 +77,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "common", .module = common },
                 .{ .name = "layout", .module = layout },
                 .{ .name = "events", .module = events },
+                .{ .name = "indicators", .module = indicators },
                 .{ .name = "raylib", .module = raylib },
                 .{ .name = "raygui", .module = raygui },
             },
@@ -71,7 +85,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.root_module.linkLibrary(raylib_artifact);
-    
+
     const csvzero = b.dependency("csvzero", .{});
     exe.root_module.addImport("csvzero", csvzero.module("csvzero"));
 

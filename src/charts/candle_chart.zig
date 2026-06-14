@@ -3,7 +3,7 @@ const std = @import("std");
 const common = @import("common");
 const Timeframe = common.Timeframe;
 const DateFormatter = common.DateFormatter;
-const Layout = @import("layout").Layout;
+const Layout = @import("layout");
 
 pub const Candle = struct {
     open: f32,

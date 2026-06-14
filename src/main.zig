@@ -60,7 +60,7 @@ pub fn main(init: std.process.Init) !void {
     var candles = try std.ArrayList(CandleChart.Candle).initCapacity(gpa, 512);
     defer candles.deinit(gpa);
 
-    var rows: usize = 500;
+    var rows: usize = 2500;
 
     for(0..6 * 4000) |_| {
         _ = it.next() catch {};
@@ -92,8 +92,6 @@ pub fn main(init: std.process.Init) !void {
             else => return err,
         };
 
-        std.debug.print("raw_date = {s}\n", .{raw_date.unescaped()});
-
         const timestamp = try parseDatetimeToTimestamp(raw_date.unescaped());
         const open = try std.fmt.parseFloat(f32, raw_open.unescaped());
         const high = try std.fmt.parseFloat(f32, raw_high.unescaped());
@@ -124,6 +122,8 @@ pub fn main(init: std.process.Init) !void {
         candles.items,
     );
 
+    defer chart.deinit(gpa);
+
     rl.setTargetFPS(60);
 
     while (!rl.windowShouldClose()) {
@@ -133,6 +133,7 @@ pub fn main(init: std.process.Init) !void {
         rl.clearBackground(.{ .r = 10, .g = 10, .b = 15, .a = 255 });
         chart.handleEvents();
         chart.draw(gpa);
+        rl.drawFPS(10, 10);
     }
 }
 

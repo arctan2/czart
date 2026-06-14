@@ -1,1 +1,1 @@
-pub const CandleChart = @import("candle.zig");
+pub const CandleChart = @import("candle_chart.zig");
