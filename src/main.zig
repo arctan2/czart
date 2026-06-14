@@ -1,8 +1,8 @@
 const std = @import("std");
 const rl = @import("raylib");
-const candle_chart = @import("candle_chart.zig");
-const CandleChart = candle_chart.CandleChart;
-const Candle = candle_chart.Candle;
+const charts = @import("charts");
+const CandleChart = charts.CandleChart;
+const ChartHandler = @import("chart_handler.zig").ChartHandler;
 const csvz = @import("csvzero");
 
 pub fn parseDatetimeToTimestamp(str: []const u8) !u64 {
@@ -39,31 +39,13 @@ fn daysFromCivil(y: i64, m: i64, d: i64) i64 {
     return era * 146097 + doe - 719468;
 }
 
-const CandleRawData = struct {
-    date: []const u8,
-    open: f32,
-    high: f32,
-    low: f32,
-    close: f32,
-    volume: f32,
-
-    fn toCandle(self: *const CandleRawData) !Candle {
-        return .{
-            .open = self.open,
-            .high = self.high,
-            .low = self.low,
-            .close = self.close,
-            .volume = self.volume,
-            .timestamp = try parseDatetimeToTimestamp(self.date)
-        };
-    }
-};
-
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
     const io = init.io;
     const screen_width: i32 = 1400;
     const screen_height: i32 = 740;
+
+    rl.setConfigFlags(.{ .window_highdpi = true, .window_maximized = true, .window_resizable = true });
 
     rl.initWindow(screen_width, screen_height, "candle chart");
     defer rl.closeWindow();
@@ -75,10 +57,10 @@ pub fn main(init: std.process.Init) !void {
     var reader = file.reader(io, &buffer);
     var it = csvz.Iterator.init(&reader.interface);
 
-    var candles = try std.ArrayList(Candle).initCapacity(gpa, 512);
+    var candles = try std.ArrayList(CandleChart.Candle).initCapacity(gpa, 512);
     defer candles.deinit(gpa);
 
-    var rows: usize = 2500;
+    var rows: usize = 500;
 
     for(0..6 * 4000) |_| {
         _ = it.next() catch {};
@@ -119,7 +101,7 @@ pub fn main(init: std.process.Init) !void {
         const close = try std.fmt.parseFloat(f32, raw_close.unescaped());
         const volume = try std.fmt.parseFloat(f32, raw_volume.unescaped());
 
-        const candle: Candle = .{
+        const candle: CandleChart.Candle = .{
             .open = open,
             .close = close,
             .low = low,
@@ -131,16 +113,15 @@ pub fn main(init: std.process.Init) !void {
         try candles.append(gpa, candle);
     }
 
-    var chart: CandleChart = .init(
+    var chart: ChartHandler = .init(
         gpa,
         .{
             .x = 20,
             .y = 20,
-            .width = screen_width - 40,
-            .height = screen_height - 40,
+            .width = @as(f32, @floatFromInt(screen_width)),
+            .height = @as(f32, @floatFromInt(screen_height)),
         },
         candles.items,
-        0.05
     );
 
     rl.setTargetFPS(60);
@@ -151,7 +132,7 @@ pub fn main(init: std.process.Init) !void {
 
         rl.clearBackground(.{ .r = 10, .g = 10, .b = 15, .a = 255 });
         chart.handleEvents();
-        chart.draw();
+        chart.draw(gpa);
     }
 }
 
