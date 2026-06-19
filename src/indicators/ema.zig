@@ -20,7 +20,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.free(self.points);
 }
 
-fn computeSMA(self: *const Self, layout: *const Layout, candles: []charts.CandleChart.Candle) void {
+fn computeEMA(self: *const Self, layout: *const Layout, candles: []charts.CandleChart.Candle) void {
     if (candles.len < self.period) return;
 
     var sum: f32 = 0;
@@ -29,18 +29,23 @@ fn computeSMA(self: *const Self, layout: *const Layout, candles: []charts.Candle
         sum += candle.close;
     }
 
+    var prev_ema = sum / @as(f32, @floatFromInt(self.period));
+
     self.points[0] = .{
         .x = layout.indexToScreenX(@floatFromInt(self.period - 1)),
-        .y = layout.priceToScreenY(sum / @as(f32, @floatFromInt(self.period))),
+        .y = layout.priceToScreenY(prev_ema),
     };
 
+    const M: f32 = 2.0 / @as(f32, @floatFromInt(self.period + 1));
+
     for (self.period..candles.len) |i| {
-        sum += candles[i].close;
-        sum -= candles[i - self.period].close;
+        const candle = candles[i];
+        const ema = (candle.close * M) + (prev_ema * (1 - M));
+        prev_ema = ema;
 
         self.points[i - self.period + 1] = .{
             .x = layout.indexToScreenX(@floatFromInt(i)),
-            .y = layout.priceToScreenY(sum / @as(f32, @floatFromInt(self.period))),
+            .y = layout.priceToScreenY(ema),
         };
     }
 }
@@ -54,6 +59,6 @@ pub fn draw(self: *const Self, layout: *const Layout, candles: []charts.CandleCh
     );
     defer rl.endScissorMode();
 
-    self.computeSMA(layout, candles);
-    rl.drawSplineLinear(self.points, 1, .{ .r = 150, .g = 150, .b = 255, .a = 255 });
+    self.computeEMA(layout, candles);
+    rl.drawSplineLinear(self.points, 1, .{ .r = 0, .g = 150, .b = 255, .a = 255 });
 }

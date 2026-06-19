@@ -45,21 +45,21 @@ pub fn init(screen_rect: rl.Rectangle, min_max: common.MinMaxYX) Self {
 pub fn indexToScreenX(self: *const Self, index: f32) f32 {
     const range = self.view_x.range();
     const t = (index - self.view_x.min) / range;
-    return self.chart_screen_rect.x + t * self.chart_screen_rect.width;
+    return self.chartLeft() + t * self.chart_screen_rect.width;
 }
 
 pub fn screenXToIndex(self: *const Self, sx: f32) f32 {
-    const t = (sx - self.chart_screen_rect.x) / self.chart_screen_rect.width;
+    const t = (sx - self.chartLeft()) / self.chart_screen_rect.width;
     return self.view_x.min + t * self.view_x.range();
 }
 
 pub fn priceToScreenY(self: *const Self, price: f32) f32 {
     const t = (price - self.view_y.min) / self.view_y.range();
-    return self.chart_screen_rect.height * (1.0 - t);
+    return (self.chart_screen_rect.height * (1.0 - t)) + self.chartTop();
 }
 
 pub fn screenYToPrice(self: *const Self, y: f32) f32 {
-    const t = 1.0 - ((y - self.chart_screen_rect.y) / self.chart_screen_rect.height);
+    const t = 1.0 - ((y - self.chartTop()) / self.chart_screen_rect.height);
     return self.view_y.min + t * self.view_y.range();
 }
 

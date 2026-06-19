@@ -19,6 +19,7 @@ pub const ChartHandler = struct {
     events: Events,
     candle_chart: charts.CandleChart,
     sma: indicators.SMA,
+    ema: indicators.EMA,
 
     date_formatter: DateFormatter,
 
@@ -31,16 +32,17 @@ pub const ChartHandler = struct {
             .candle_chart = candle_chart,
             .events = .{},
             .sma = .init(allocator, candles, 50),
+            .ema = .init(allocator, candles, 50),
             .date_formatter = DateFormatter{ .allocator = allocator }
         };
     }
 
     pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         self.sma.deinit(allocator);
+        self.ema.deinit(allocator);
     }
 
     fn drawYAxis(self: *Self) void {
-        const chart_top = self.layout.chartTop();
         const right = self.layout.chartRight();
 
         const price_range = self.layout.view_y.range();
@@ -51,7 +53,7 @@ pub const ChartHandler = struct {
         var price = first;
         while (price <= self.layout.view_y.max) : (price += interval) {
             const sy = self.layout.priceToScreenY(price);
-            const screen_y = chart_top + sy;
+            const screen_y = sy;
 
             rl.drawLineEx(
                 .{ .x = self.layout.chartLeft(), .y = screen_y },
@@ -163,6 +165,7 @@ pub const ChartHandler = struct {
         self.candle_chart.drawCandles(&self.layout);
         self.candle_chart.drawCrosshair(&self.layout, &self.date_formatter);
         self.sma.draw(&self.layout, self.candle_chart.candles);
+        self.ema.draw(&self.layout, self.candle_chart.candles);
     }
 
 

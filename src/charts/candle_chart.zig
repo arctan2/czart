@@ -65,12 +65,10 @@ pub fn drawCandles(self: *Self, layout: *const Layout) void {
 }
 
 pub fn drawCandleAt(layout: *const Layout, c: *const Candle, screen_x: f32, w: f32) void {
-    const top = layout.chartTop();
-
-    const open_y = top + layout.priceToScreenY(c.open);
-    const close_y = top + layout.priceToScreenY(c.close);
-    const high_y = top + layout.priceToScreenY(c.high);
-    const low_y = top + layout.priceToScreenY(c.low);
+    const open_y = layout.priceToScreenY(c.open);
+    const close_y = layout.priceToScreenY(c.close);
+    const high_y = layout.priceToScreenY(c.high);
+    const low_y = layout.priceToScreenY(c.low);
 
     const body_top = @min(open_y, close_y);
     const body_height = @max(@abs(open_y - close_y), 1.0);
