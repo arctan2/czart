@@ -8,9 +8,9 @@ const Self = @This();
 points: []rl.Vector2,
 period: usize,
 
-pub fn init(allocator: std.mem.Allocator, candles: []charts.CandleChart.Candle, period: usize) Self {
+pub fn init(allocator: std.mem.Allocator, candles: []charts.CandleChart.Candle, period: usize) !Self {
     const self = Self{
-        .points = allocator.alloc(rl.Vector2, candles.len - period + 1) catch @panic("unable to alloc points"),
+        .points = try allocator.alloc(rl.Vector2, candles.len - period + 1),
         .period = period
     };
     return self;
@@ -46,14 +46,6 @@ fn computeSMA(self: *const Self, layout: *const Layout, candles: []charts.Candle
 }
 
 pub fn draw(self: *const Self, layout: *const Layout, candles: []charts.CandleChart.Candle) void {
-    rl.beginScissorMode(
-        @intFromFloat(layout.chartLeft()),
-        @intFromFloat(layout.chartTop()),
-        @intFromFloat(layout.chart_screen_rect.width),
-        @intFromFloat(layout.chart_screen_rect.height),
-    );
-    defer rl.endScissorMode();
-
     self.computeSMA(layout, candles);
-    rl.drawSplineLinear(self.points, 1, .{ .r = 150, .g = 150, .b = 255, .a = 255 });
+    charts.LineChart.draw(layout, self.points, .{ .r = 150, .g = 150, .b = 255, .a = 255 });
 }

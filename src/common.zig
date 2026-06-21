@@ -14,22 +14,20 @@ pub const MonthNames = [_][]const u8{
 };
 
 pub const DateFormatter = struct {
-    allocator: std.mem.Allocator,
-
-    pub fn toNumericDash(self: *const DateFormatter, epoch_seconds: i64) ![]u8 {
+    pub fn toNumericDash(allocator: std.mem.Allocator, epoch_seconds: i64) ![:0]const u8 {
         const epoch_days = @divFloor(epoch_seconds, std.time.epoch.secs_per_day);
         const epoch_day = std.time.epoch.EpochDay{ .day = @intCast(epoch_days) };
         const year_and_day = epoch_day.calculateYearDay()();
         const month_and_day = year_and_day.calculateMonthAndDay();
 
-        return try std.fmt.allocPrint(self.allocator, "{d:0>2}-{d:0>2}-{d:0>4}", .{
+        return try std.fmt.allocPrintSentinel(allocator, "{d:0>2}-{d:0>2}-{d:0>4}", .{
             month_and_day.day_index + 1,
             month_and_day.month.numeric(),
             year_and_day.year,
-        });
+        }, 0);
     }
 
-    pub fn toTextual(self: *const DateFormatter, epoch_seconds: i64) ![]u8 {
+    pub fn toTextual(allocator: std.mem.Allocator, epoch_seconds: i64) ![:0]const u8 {
         const epoch_days = @divFloor(epoch_seconds, std.time.epoch.secs_per_day);
         const epoch_day = std.time.epoch.EpochDay{ .day = @intCast(epoch_days) };
         const year_and_day = epoch_day.calculateYearDay();
@@ -37,14 +35,14 @@ pub const DateFormatter = struct {
 
         const month_idx = month_and_day.month.numeric() - 1;
 
-        return try std.fmt.allocPrint(self.allocator, "{s} {d}, {d}", .{
+        return try std.fmt.allocPrintSentinel(allocator, "{s} {d}, {d}", .{
             MonthNames[month_idx],
             month_and_day.day_index + 1,
             year_and_day.year,
-        });
+        }, 0);
     }
 
-    pub fn toTextualTime(self: *const DateFormatter, epoch_seconds: i64) ![]u8 {
+    pub fn toTextualTime(allocator: std.mem.Allocator, epoch_seconds: i64) ![:0]const u8 {
         const secs_per_day: i64 = std.time.epoch.secs_per_day;
         const epoch_days = @divFloor(epoch_seconds, secs_per_day);
         const epoch_day = std.time.epoch.EpochDay{ .day = @intCast(epoch_days) };
@@ -58,12 +56,12 @@ pub const DateFormatter = struct {
         const hours: u64 = @intCast(@divFloor(secs_of_day, 3600));
         const minutes: u64 = @intCast(@divFloor(@mod(secs_of_day, 3600), 60));
 
-        return try std.fmt.allocPrint(self.allocator, "{s} {d} {d:0>2}:{d:0>2}", .{
+        return try std.fmt.allocPrintSentinel(allocator, "{s} {d} {d:0>2}:{d:0>2}", .{
             MonthNames[month_idx],
             month_and_day.day_index + 1,
             hours,
             minutes,
-        });
+        }, 0);
     }
 };
 
@@ -95,8 +93,8 @@ pub const Timeframe = enum {
 };
 
 pub const MinMax = struct {
-    min: f32,
-    max: f32,
+    min: f32 = 0,
+    max: f32 = 0,
 
     pub fn pad(self: *MinMax, factor: f32) void {
         const p = (self.max - self.min) * factor;

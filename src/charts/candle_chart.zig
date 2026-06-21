@@ -4,6 +4,7 @@ const common = @import("common");
 const Timeframe = common.Timeframe;
 const DateFormatter = common.DateFormatter;
 const Layout = @import("layout");
+const Resources = @import("resources");
 
 pub const Candle = struct {
     open: f32,
@@ -42,23 +43,23 @@ pub fn indexToTs(self: *const Self, index: f32) i64 {
 
 pub fn drawCandles(self: *Self, layout: *const Layout) void {
     rl.beginScissorMode(
-        @intFromFloat(layout.chartLeft()),
-        @intFromFloat(layout.chartTop()),
-        @intFromFloat(layout.chart_screen_rect.width),
-        @intFromFloat(layout.chart_screen_rect.height),
+        @intFromFloat(layout.left),
+        @intFromFloat(layout.top),
+        @intFromFloat(layout.width),
+        @intFromFloat(layout.height),
     );
     defer rl.endScissorMode();
 
     const index_range = layout.view_x.max - layout.view_x.min;
-    const slot_px = layout.chart_screen_rect.width / index_range;
+    const slot_px = layout.width / index_range;
     const w = slot_px * 0.8;
 
     for (self.candles, 0..self.candles.len) |*c, i| {
         const idx: f32 = @floatFromInt(i);
         const sx = layout.indexToScreenX(idx) - w / 2.0;
 
-        if (sx + w < layout.chartLeft()) continue;
-        if (sx > layout.chartRight()) continue;
+        if (sx + w < layout.left) continue;
+        if (sx > layout.right()) continue;
 
         drawCandleAt(layout, c, sx, w);
     }
@@ -80,27 +81,32 @@ pub fn drawCandleAt(layout: *const Layout, c: *const Candle, screen_x: f32, w: f
     rl.drawRectangleV(.{ .x = screen_x, .y = body_top }, .{ .x = w, .y = body_height }, color);
 }
 
-pub fn drawCrosshair(self: *const Self, layout: *const Layout, date_formatter: *common.DateFormatter) void {
+pub fn drawCrosshair(
+    self: *const Self,
+    allocator: std.mem.Allocator,
+    layout: *const Layout,
+    resources: *const Resources,
+) void {
     const mouse = rl.getMousePosition();
 
     rl.beginScissorMode(
-        @intFromFloat(layout.chartLeft()),
-        @intFromFloat(layout.chartTop()),
-        @intFromFloat(layout.chart_screen_rect.width),
-        @intFromFloat(layout.chart_screen_rect.height),
+        @intFromFloat(layout.screen_rect.x),
+        @intFromFloat(layout.screen_rect.y),
+        @intFromFloat(layout.width),
+        @intFromFloat(layout.screen_rect.height),
     ); {
         const crosshair_color = rl.Color{ .r = 230, .g = 0, .b = 180, .a = 255 };
         const dash_size = 3;
         const space_size = 3;
         rl.drawLineDashed(
-            .{ .x = layout.chartLeft(), .y = mouse.y },
-            .{ .x = layout.chartRight(), .y = mouse.y },
+            .{ .x = layout.left, .y = mouse.y },
+            .{ .x = layout.right(), .y = mouse.y },
             dash_size, space_size, crosshair_color
         );
 
         rl.drawLineDashed(
-            .{ .x = mouse.x, .y = layout.chartTop() },
-            .{ .x = mouse.x, .y = layout.chartBottom() },
+            .{ .x = mouse.x, .y = layout.screen_rect.y },
+            .{ .x = mouse.x, .y = layout.screen_rect.height },
             dash_size, space_size, crosshair_color
         );
     } rl.endScissorMode();
@@ -108,17 +114,17 @@ pub fn drawCrosshair(self: *const Self, layout: *const Layout, date_formatter: *
     var buf: [24]u8 = undefined;
     const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{layout.screenYToPrice(mouse.y)}) catch @panic("unable to convert float -> string");
 
-    var label_x = layout.chartRight() + 8.0;
+    var label_x = layout.right() + 8.0;
     var label_y = mouse.y - Layout.PRICE_FONT_SIZE / 2.0;
     const pad = 4;
     
     rl.drawRectangleV(
-        .{ .x = layout.chartRight(), .y = label_y - pad },
+        .{ .x = layout.right(), .y = label_y - pad },
         .{ .x = Layout.Y_AXIS_WIDTH, .y = Layout.PRICE_FONT_SIZE + (pad * 2) },
         .{ .r = 255, .g = 255, .b = 255, .a = 255 }
     );
 
-    rl.drawTextEx(layout.font, text, .{ .x = label_x, .y = label_y }, Layout.PRICE_FONT_SIZE, 1, .black);
+    rl.drawTextEx(resources.font, text, .{ .x = label_x, .y = label_y }, Layout.PRICE_FONT_SIZE, 1, .black);
 
     buf = undefined;
     
@@ -126,18 +132,17 @@ pub fn drawCrosshair(self: *const Self, layout: *const Layout, date_formatter: *
     const epoch_seconds = @divFloor(ts, 1000);
     const shows_time = self.timeframe.showsTime();
 
-    label_y = layout.chartBottom() + 8.0;
+    label_y = layout.screen_rect.height - (layout.screen_rect.y / 2) + 8.0;
 
     const time_text = (
         if (shows_time)
-            date_formatter.toTextualTime(epoch_seconds)
+            DateFormatter.toTextualTime(allocator, epoch_seconds)
         else
-            date_formatter.toTextual(epoch_seconds)
+            DateFormatter.toTextual(allocator, epoch_seconds)
     ) catch @panic("error in formating timestamp");
-    defer date_formatter.allocator.free(time_text);
+    defer allocator.free(time_text);
 
-    const textZ = std.fmt.bufPrintZ(&buf, "{s}", .{time_text}) catch @panic("error in formating timestamp");
-    const text_size = rl.measureTextEx(layout.font, textZ, Layout.PRICE_FONT_SIZE, 1);
+    const text_size = rl.measureTextEx(resources.font, time_text, Layout.PRICE_FONT_SIZE, 1);
     label_x = mouse.x - text_size.x / 2.0;
 
     rl.drawRectangleV(
@@ -146,6 +151,6 @@ pub fn drawCrosshair(self: *const Self, layout: *const Layout, date_formatter: *
         .{ .r = 255, .g = 255, .b = 255, .a = 255 }
     );
 
-    rl.drawTextEx(layout.font, textZ, .{ .x = label_x, .y = label_y }, Layout.PRICE_FONT_SIZE, 1, .black);
+    rl.drawTextEx(resources.font, time_text, .{ .x = label_x, .y = label_y }, Layout.PRICE_FONT_SIZE, 1, .black);
 }
 

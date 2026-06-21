@@ -1,22 +1,22 @@
 const rl = @import("raylib");
 const std = @import("std");
-const common = @import("common");
-const Timeframe = common.Timeframe;
-const DateFormatter = common.DateFormatter;
-const Layout = @import("layout").Layout;
+const Layout = @import("layout");
 
-pub const Self = @This();
+const Self = @This();
 
-points: []rl.Vector2,
-
-pub fn draw(self: *Self, layout: *const Layout) void {
+pub fn draw(
+    layout: *const Layout,
+    points: []rl.Vector2,
+    color: rl.Color
+) void {
     rl.beginScissorMode(
-        @intFromFloat(layout.chartLeft()),
-        @intFromFloat(layout.chartTop()),
-        @intFromFloat(layout.chart_screen_rect.width),
-        @intFromFloat(layout.chart_screen_rect.height),
+        @intFromFloat(layout.left),
+        @intFromFloat(layout.top),
+        @intFromFloat(layout.width),
+        @intFromFloat(layout.height),
     );
     defer rl.endScissorMode();
 
+    rl.drawSplineLinear(points, 1, color);
 }
 

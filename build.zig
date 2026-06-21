@@ -20,8 +20,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{},
     });
 
-    const layout = b.createModule(.{
-        .root_source_file = b.path("src/layout.zig"),
+    const resources = b.createModule(.{
+        .root_source_file = b.path("src/resources.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -30,14 +30,26 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const events = b.createModule(.{
-        .root_source_file = b.path("src/events.zig"),
+    const layout = b.createModule(.{
+        .root_source_file = b.path("src/layout.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "common", .module = common },
+            .{ .name = "raylib", .module = raylib },
+            .{ .name = "resources", .module = resources },
+        },
+    });
+
+    const region = b.createModule(.{
+        .root_source_file = b.path("src/region.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "common", .module = common },
             .{ .name = "layout", .module = layout },
             .{ .name = "raylib", .module = raylib },
+            .{ .name = "resources", .module = resources },
         },
     });
 
@@ -48,8 +60,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "common", .module = common },
             .{ .name = "layout", .module = layout },
-            .{ .name = "events", .module = events },
             .{ .name = "raylib", .module = raylib },
+            .{ .name = "resources", .module = resources },
         },
     });
 
@@ -60,9 +72,9 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "common", .module = common },
             .{ .name = "layout", .module = layout },
-            .{ .name = "events", .module = events },
             .{ .name = "charts", .module = charts },
             .{ .name = "raylib", .module = raylib },
+            .{ .name = "resources", .module = resources },
         },
     });
 
@@ -75,10 +87,11 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "charts", .module = charts },
                 .{ .name = "common", .module = common },
+                .{ .name = "resources", .module = resources },
                 .{ .name = "layout", .module = layout },
-                .{ .name = "events", .module = events },
                 .{ .name = "indicators", .module = indicators },
                 .{ .name = "raylib", .module = raylib },
+                .{ .name = "region", .module = region },
                 .{ .name = "raygui", .module = raygui },
             },
         }),

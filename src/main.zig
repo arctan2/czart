@@ -2,7 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const charts = @import("charts");
 const CandleChart = charts.CandleChart;
-const ChartHandler = @import("chart_handler.zig").ChartHandler;
+const Root = @import("root.zig");
 const csvz = @import("csvzero");
 
 pub fn parseDatetimeToTimestamp(str: []const u8) !u64 {
@@ -111,7 +111,7 @@ pub fn main(init: std.process.Init) !void {
         try candles.append(gpa, candle);
     }
 
-    var chart: ChartHandler = .init(
+    var root: Root = try .init(
         gpa,
         .{
             .x = 20,
@@ -122,7 +122,7 @@ pub fn main(init: std.process.Init) !void {
         candles.items,
     );
 
-    defer chart.deinit(gpa);
+    defer root.deinit(gpa);
 
     rl.setTargetFPS(60);
 
@@ -131,8 +131,8 @@ pub fn main(init: std.process.Init) !void {
         defer rl.endDrawing();
 
         rl.clearBackground(.{ .r = 10, .g = 10, .b = 15, .a = 255 });
-        chart.handleEvents();
-        chart.draw(gpa);
+        try root.handleEvents(gpa);
+        root.draw(gpa);
         rl.drawFPS(10, 10);
     }
 }
