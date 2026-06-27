@@ -5,6 +5,7 @@ const Timeframe = common.Timeframe;
 const DateFormatter = common.DateFormatter;
 const Layout = @import("layout");
 const Resources = @import("resources");
+const MinMax = common.MinMax;
 
 pub const Candle = struct {
     open: f32,
@@ -14,21 +15,82 @@ pub const Candle = struct {
     timestamp: u64,
     volume: f32
 };
+const View = struct {
+    x: MinMax = .{},
+    y: MinMax = .{},
+};
+pub const MIN_TICK_SPACING: f32 = 300.0;
+pub const TARGET_Y_AXIS_COUNT: f32 = 10;
+pub const Y_AXIS_WIDTH: f32 = 70;
+pub const X_AXIS_HEIGHT: f32 = 30;
+pub const PRICE_FONT_SIZE: f32 = 14;
+pub const CANDLE_SLOT: f32 = 20;
+pub const CANDLE_WIDTH: f32 = 18;
+pub const CHART_PAD = 0.05;
 
 pub const Self = @This();
 
 candles: []Candle,
 timeframe: Timeframe = .m1,
+view: View = .{},
+layout: Layout,
 
-pub fn calcMinMax(self: *const Self) common.MinMaxYX {
+pub fn init(screen_rect: *const rl.Rectangle, candles: []Candle) Self {
+    var r = screen_rect.*;
+    r.height -= r.y * 2;
+    r.width -= r.x * 2;
+
+    r.width -= Y_AXIS_WIDTH;
+    r.height -= X_AXIS_HEIGHT;
+
+    var mm: View = calcMinMax(candles);
+
+    mm.x.pad(CHART_PAD);
+    mm.y.pad(CHART_PAD);
+
+    return .{
+        .candles = candles,
+        .layout = .initRect(screen_rect, r),
+        .view = mm
+    };
+}
+
+pub fn calcMinMax(candles: []Candle) View {
     var y: common.MinMax = .{ .min = std.math.floatMax(f32), .max = std.math.floatMin(f32) };
-    for (self.candles) |c| {
+    for (candles) |c| {
         y.min = @min(y.min, c.low);
         y.max = @max(y.max, c.high);
     }
-    const last_index: f32 = if (self.candles.len == 0) 0 else @floatFromInt(self.candles.len - 1);
+    const last_index: f32 = if (candles.len == 0) 0 else @floatFromInt(candles.len - 1);
     const x: common.MinMax = .{ .min = 0, .max = last_index };
     return .{ .y = y, .x = x };
+}
+
+pub fn indexToScreenX(self: *const Self, index: f32) f32 {
+    const range = self.view.x.range();
+    const t = (index - self.view.x.min) / range;
+    return self.layout.left + t * self.layout.width;
+}
+
+pub fn screenXToIndex(self: *const Self, sx: f32) f32 {
+    const t = (sx - self.layout.left) / self.layout.width;
+    return self.view.x.min + t * self.view.x.range();
+}
+
+pub fn priceToScreenY(self: *const Self, price: f32) f32 {
+    const t = (price - self.view.y.min) / self.view.y.range();
+    return (self.layout.height * (1.0 - t)) + self.layout.top;
+}
+
+pub fn screenYToPrice(self: *const Self, y: f32) f32 {
+    const t = 1.0 - ((y - self.layout.top) / self.layout.height);
+    return self.view.y.min + t * self.view.y.range();
+}
+
+pub fn tickStride(self: *const Self) f32 {
+    const candles_per_pixel = self.view.x.range() / self.layout.width;
+    const min_stride = candles_per_pixel * MIN_TICK_SPACING;
+    return common.niceInterval(min_stride);
 }
 
 pub fn indexToTs(self: *const Self, index: f32) i64 {
@@ -41,35 +103,35 @@ pub fn indexToTs(self: *const Self, index: f32) i64 {
     return base_ts + delta_ms;
 }
 
-pub fn drawCandles(self: *Self, layout: *const Layout) void {
+pub fn drawCandles(self: *Self) void {
     rl.beginScissorMode(
-        @intFromFloat(layout.left),
-        @intFromFloat(layout.top),
-        @intFromFloat(layout.width),
-        @intFromFloat(layout.height),
+        @intFromFloat(self.layout.left),
+        @intFromFloat(self.layout.top),
+        @intFromFloat(self.layout.width),
+        @intFromFloat(self.layout.height),
     );
     defer rl.endScissorMode();
 
-    const index_range = layout.view_x.max - layout.view_x.min;
-    const slot_px = layout.width / index_range;
+    const index_range = self.view.x.max - self.view.x.min;
+    const slot_px = self.layout.width / index_range;
     const w = slot_px * 0.8;
 
     for (self.candles, 0..self.candles.len) |*c, i| {
         const idx: f32 = @floatFromInt(i);
-        const sx = layout.indexToScreenX(idx) - w / 2.0;
+        const sx = self.indexToScreenX(idx) - w / 2.0;
 
-        if (sx + w < layout.left) continue;
-        if (sx > layout.right()) continue;
+        if (sx + w < self.layout.left) continue;
+        if (sx > self.layout.right()) continue;
 
-        drawCandleAt(layout, c, sx, w);
+        self.drawCandleAt(c, sx, w);
     }
 }
 
-pub fn drawCandleAt(layout: *const Layout, c: *const Candle, screen_x: f32, w: f32) void {
-    const open_y = layout.priceToScreenY(c.open);
-    const close_y = layout.priceToScreenY(c.close);
-    const high_y = layout.priceToScreenY(c.high);
-    const low_y = layout.priceToScreenY(c.low);
+pub fn drawCandleAt(self: *Self, c: *const Candle, screen_x: f32, w: f32) void {
+    const open_y = self.priceToScreenY(c.open);
+    const close_y = self.priceToScreenY(c.close);
+    const high_y = self.priceToScreenY(c.high);
+    const low_y = self.priceToScreenY(c.low);
 
     const body_top = @min(open_y, close_y);
     const body_height = @max(@abs(open_y - close_y), 1.0);
@@ -84,55 +146,54 @@ pub fn drawCandleAt(layout: *const Layout, c: *const Candle, screen_x: f32, w: f
 pub fn drawCrosshair(
     self: *const Self,
     allocator: std.mem.Allocator,
-    layout: *const Layout,
     resources: *const Resources,
 ) void {
     const mouse = rl.getMousePosition();
 
     rl.beginScissorMode(
-        @intFromFloat(layout.screen_rect.x),
-        @intFromFloat(layout.screen_rect.y),
-        @intFromFloat(layout.width),
-        @intFromFloat(layout.screen_rect.height),
+        @intFromFloat(self.layout.screen_rect.x),
+        @intFromFloat(self.layout.screen_rect.y),
+        @intFromFloat(self.layout.width),
+        @intFromFloat(self.layout.screen_rect.height),
     ); {
         const crosshair_color = rl.Color{ .r = 230, .g = 0, .b = 180, .a = 255 };
         const dash_size = 3;
         const space_size = 3;
         rl.drawLineDashed(
-            .{ .x = layout.left, .y = mouse.y },
-            .{ .x = layout.right(), .y = mouse.y },
+            .{ .x = self.layout.left, .y = mouse.y },
+            .{ .x = self.layout.right(), .y = mouse.y },
             dash_size, space_size, crosshair_color
         );
 
         rl.drawLineDashed(
-            .{ .x = mouse.x, .y = layout.screen_rect.y },
-            .{ .x = mouse.x, .y = layout.screen_rect.height },
+            .{ .x = mouse.x, .y = self.layout.screen_rect.y },
+            .{ .x = mouse.x, .y = self.layout.screen_rect.height },
             dash_size, space_size, crosshair_color
         );
     } rl.endScissorMode();
 
     var buf: [24]u8 = undefined;
-    const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{layout.screenYToPrice(mouse.y)}) catch @panic("unable to convert float -> string");
+    const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{self.screenYToPrice(mouse.y)}) catch @panic("unable to convert float -> string");
 
-    var label_x = layout.right() + 8.0;
-    var label_y = mouse.y - Layout.PRICE_FONT_SIZE / 2.0;
+    var label_x = self.layout.right() + 8.0;
+    var label_y = mouse.y - PRICE_FONT_SIZE / 2.0;
     const pad = 4;
     
     rl.drawRectangleV(
-        .{ .x = layout.right(), .y = label_y - pad },
-        .{ .x = Layout.Y_AXIS_WIDTH, .y = Layout.PRICE_FONT_SIZE + (pad * 2) },
+        .{ .x = self.layout.right(), .y = label_y - pad },
+        .{ .x = Y_AXIS_WIDTH, .y = PRICE_FONT_SIZE + (pad * 2) },
         .{ .r = 255, .g = 255, .b = 255, .a = 255 }
     );
 
-    rl.drawTextEx(resources.font, text, .{ .x = label_x, .y = label_y }, Layout.PRICE_FONT_SIZE, 1, .black);
+    rl.drawTextEx(resources.font, text, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, .black);
 
     buf = undefined;
     
-    const ts = self.indexToTs(layout.screenXToIndex(mouse.x));
+    const ts = self.indexToTs(self.screenXToIndex(mouse.x));
     const epoch_seconds = @divFloor(ts, 1000);
     const shows_time = self.timeframe.showsTime();
 
-    label_y = layout.screen_rect.height - (layout.screen_rect.y / 2) + 8.0;
+    label_y = self.layout.screen_rect.height - (self.layout.screen_rect.y / 2) + 8.0;
 
     const time_text = (
         if (shows_time)
@@ -142,15 +203,115 @@ pub fn drawCrosshair(
     ) catch @panic("error in formating timestamp");
     defer allocator.free(time_text);
 
-    const text_size = rl.measureTextEx(resources.font, time_text, Layout.PRICE_FONT_SIZE, 1);
+    const text_size = rl.measureTextEx(resources.font, time_text, PRICE_FONT_SIZE, 1);
     label_x = mouse.x - text_size.x / 2.0;
 
     rl.drawRectangleV(
         .{ .x = label_x - pad, .y = label_y - pad },
-        .{ .x = text_size.x + (pad * 2), .y = Layout.PRICE_FONT_SIZE + (pad * 2) },
+        .{ .x = text_size.x + (pad * 2), .y = PRICE_FONT_SIZE + (pad * 2) },
         .{ .r = 255, .g = 255, .b = 255, .a = 255 }
     );
 
-    rl.drawTextEx(resources.font, time_text, .{ .x = label_x, .y = label_y }, Layout.PRICE_FONT_SIZE, 1, .black);
+    rl.drawTextEx(resources.font, time_text, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, .black);
 }
 
+pub fn drawYAxis(self: *Self, resources: *const Resources) void {
+    const r = self.layout.right();
+    const price_range = self.view.y.range();
+    const raw_interval = price_range / TARGET_Y_AXIS_COUNT;
+    const interval = common.niceInterval(raw_interval);
+    const first = @ceil(self.view.y.min / interval) * interval;
+
+    rl.drawRectangle(
+        @intFromFloat(r),
+        @intFromFloat(self.layout.top),
+        @intFromFloat(Y_AXIS_WIDTH),
+        @intFromFloat(self.layout.height),
+        Resources.AXIS_BG,
+    );
+
+    rl.drawLineEx(
+        .{ .x = r, .y = self.layout.top },
+        .{ .x = r, .y = self.layout.top + self.layout.height },
+        1.0, Resources.AXIS_BORDER_COLOR,
+    );
+
+    var price = first;
+    while (price <= self.view.y.max) : (price += interval) {
+        const sy = self.priceToScreenY(price);
+        const screen_y = sy;
+
+        rl.drawLineEx(
+            .{ .x = self.layout.left, .y = screen_y },
+            .{ .x = r, .y = screen_y },
+            1.0,
+            Resources.GRID_COLOR
+        );
+
+        rl.drawLineEx(
+            .{ .x = r, .y = screen_y },
+            .{ .x = r + 4.0, .y = screen_y },
+            1.0,
+            .{ .r = 120, .g = 120, .b = 120, .a = 255 },
+        );
+
+        var buf: [16]u8 = undefined;
+        const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{price}) catch @panic("unable to convert float -> string");
+
+        const label_x = r + 8.0;
+        const label_y = screen_y - PRICE_FONT_SIZE / 2.0;
+        rl.drawTextEx(resources.font, text, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, .white);
+    }
+}
+
+pub fn drawXAxis(self: *Self, allocator: std.mem.Allocator, resources: *Resources) void {
+    const axis_y = self.layout.screen_rect.height - (self.layout.top / 2);
+    const label_y = axis_y + 8.0;
+
+    const stride = self.tickStride();
+    const first_tick = @ceil(self.view.x.min / stride) * stride;
+    const shows_time = self.timeframe.showsTime();
+
+    rl.drawRectangle(
+        @intFromFloat(self.layout.left),
+        @intFromFloat(axis_y),
+        @intFromFloat(self.layout.width + Y_AXIS_WIDTH),
+        @intFromFloat(X_AXIS_HEIGHT),
+        Resources.AXIS_BG,
+    );
+
+    var index: f32 = first_tick;
+    while (index <= self.view.x.max) : (index += stride) {
+        const sx = self.indexToScreenX(index);
+        if (sx < self.layout.left or sx > self.layout.right()) continue;
+
+        rl.drawLineEx(
+            .{ .x = sx, .y = self.layout.top },
+            .{ .x = sx, .y = axis_y },
+            1.0,
+            Resources.GRID_COLOR
+        );
+
+        rl.drawLineEx(
+            .{ .x = sx, .y = axis_y },
+            .{ .x = sx, .y = axis_y + 5.0 },
+            1.0,
+            .{ .r = 120, .g = 120, .b = 120, .a = 255 },
+        );
+
+        const ts = self.indexToTs(index);
+        const epoch_seconds = @divFloor(ts, 1000);
+
+        const text = (
+            if (shows_time)
+                DateFormatter.toTextualTime(allocator, epoch_seconds)
+            else
+                DateFormatter.toTextual(allocator, epoch_seconds)
+        ) catch continue;
+        defer allocator.free(text);
+
+        const text_size = rl.measureTextEx(resources.font, text, PRICE_FONT_SIZE, 1);
+        const label_x = sx - text_size.x / 2.0;
+        rl.drawTextEx(resources.font, text, .{ .x = label_x, .y = label_y }, PRICE_FONT_SIZE, 1, .white);
+    }
+}

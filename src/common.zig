@@ -107,7 +107,3 @@ pub const MinMax = struct {
     }
 };
 
-pub const MinMaxYX = struct {
-    y: MinMax,
-    x: MinMax
-};
