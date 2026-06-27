@@ -129,6 +129,7 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
         const ip = try IndicatorPicker.init(allocator, self.layout.screen_rect);
         self.region.setChild(&ip.region);
         self.indicator_picker_region_ptr = &ip.region;
+        while (rl.getCharPressed() != 0) {}
         return true;
     }
 
