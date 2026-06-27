@@ -50,6 +50,8 @@ pub fn main(init: std.process.Init) !void {
     rl.initWindow(screen_width, screen_height, "candle chart");
     defer rl.closeWindow();
 
+    rl.setExitKey(.comma);
+
     var file = try std.Io.Dir.cwd().openFile(io, "./datasets/ADANIENT_minute.csv", .{ .mode = .read_only });
     defer file.close(io);
 

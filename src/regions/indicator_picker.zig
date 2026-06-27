@@ -13,8 +13,8 @@ const Self = @This();
 layout: Layout,
 region: Region,
 
-pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle) !Self {
-    const self = try allocator.create(Self);
+pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle) !*Self {
+    var self = try allocator.create(Self);
     self.* = .{
         .layout = .empty(screen_rect),
         .region = .{
@@ -25,15 +25,16 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle) !Sel
         }
     };
 
-    self.layout.x = 0;
-    self.layout.y = 0;
+    self.layout.left = 0;
+    self.layout.top = 0;
     self.layout.width = 100;
     self.layout.height = 100;
 
     return self;
 }
 
-pub fn deinit(_: *Self, _: std.mem.Allocator) void {
+pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+    allocator.destroy(self);
 }
 
 fn draw(self: *Self, _: std.mem.Allocator, _: *Resources) void {
@@ -53,16 +54,16 @@ fn handleEvents(self: *Self, ctx: *Region.EventCtx) void {
     }
 }
 
-fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *Region.EventCtx, self_region: *Region) !bool {
+fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *Region.EventCtx) !bool {
     var self: *Self = @ptrCast(@alignCast(ptr));
 
     if(rl.isWindowResized()) {
-        self.layout.height = self.layout.screen_rect.height - Layout.X_AXIS_HEIGHT;
-        self.layout.width = self.layout.screen_rect.width - Layout.Y_AXIS_WIDTH;
+        self.layout.height = self.layout.screen_rect.height;
+        self.layout.width = self.layout.screen_rect.width;
     }
 
     if(rl.isKeyPressed(.escape)) {
-        self_region.destroy(allocator);
+        self.region.destroy(allocator);
     }
 
     return true;

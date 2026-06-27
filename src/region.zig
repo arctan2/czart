@@ -27,6 +27,9 @@ pub const EventCtx = struct {
     }
 };
 
+pub fn emptyChildWillDestroyFn(_: *anyopaque, _: *Self) void {
+}
+
 ptr: *anyopaque,
 parent: ?*Self = null,
 child: ?*Self = null,
@@ -34,6 +37,7 @@ sib: ?*Self = null,
 
 handleEventsFn: *const fn(*anyopaque, allocator: std.mem.Allocator, event_ctx: *EventCtx) error{ OutOfMemory }!bool,
 drawFn: *const fn(*anyopaque, allocator: std.mem.Allocator, resources: *Resources) void,
+childWillDestroyFn: *const fn(*anyopaque, child: *Self) void = emptyChildWillDestroyFn,
 destroyFn: *const fn(*anyopaque, allocator: std.mem.Allocator) void,
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) void {
@@ -45,6 +49,10 @@ pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) vo
         c.draw(allocator, resources);
         child = c.sib;
     }
+
+    if(self.sib) |sib| {
+        sib.draw(allocator, resources);
+    }
 }
 
 pub fn handleEvents(self: *Self, allocator: std.mem.Allocator, event_ctx: *EventCtx) !bool {
@@ -52,29 +60,41 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator, event_ctx: *Event
 }
 
 pub fn detachChild(self: *Self, child: *Self) void {
-    if(self.child) |child_region| {
-        var cur: ?*Self = child_region;
-        while(cur) |c| {
-            while(c.sib != child) {
-                cur = c.sib;
+    if (self.child == null) return;
+
+    if (self.child.? == child) {
+        self.child = child.sib;
+    } else {
+        var cur = self.child.?;
+        while (cur.sib) |next| {
+            if (next == child) {
+                cur.sib = child.sib;
+                break;
             }
-        }
-        if(cur) |c| {
-            c.sib = child.sib;
+            cur = next;
         }
     }
+
+    child.parent = null;
+    child.sib = null;
 }
 
-pub fn detach(self: *Self) void {
-    if(self.parent) |p| {
-        p.detachChild(self);
-    }
+pub fn childWillDestroy(self: *Self, child: *Self) void {
+    self.childWillDestroyFn(self.ptr, child);
 }
 
 pub fn destroy(self: *Self, allocator: std.mem.Allocator) void {
-    self.detach();
+    if(self.parent) |p| {
+        p.childWillDestroy(self);
+        p.detachChild(self);
+    }
 
     while (self.child) |child| {
+        self.child = child.sib;
+
+        child.parent = null;
+        child.sib = null;
+
         child.destroy(allocator);
     }
 
@@ -86,6 +106,7 @@ pub fn setChild(self: *Self, region: *Self) void {
         child.setSib(region);
     } else {
         self.child = region;
+        region.parent = self;
     }
 }
 
