@@ -36,22 +36,22 @@ child: ?*Self = null,
 sib: ?*Self = null,
 
 handleEventsFn: *const fn(*anyopaque, allocator: std.mem.Allocator, event_ctx: *EventCtx) error{ OutOfMemory }!bool,
-drawFn: *const fn(*anyopaque, allocator: std.mem.Allocator, resources: *Resources) void,
+drawFn: *const fn(*anyopaque, allocator: std.mem.Allocator, event_ctx: *EventCtx, resources: *Resources) error{ OutOfMemory }!void,
 childWillDestroyFn: *const fn(*anyopaque, child: *Self) void = emptyChildWillDestroyFn,
 destroyFn: *const fn(*anyopaque, allocator: std.mem.Allocator) void,
 
-pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) void {
-    self.drawFn(self.ptr, allocator, resources);
+pub fn draw(self: *Self, allocator: std.mem.Allocator, event_ctx: *EventCtx, resources: *Resources) !void {
+    try self.drawFn(self.ptr, allocator, event_ctx, resources);
 
     var child = self.child;
 
     while (child) |c| {
-        c.draw(allocator, resources);
+        try c.draw(allocator, event_ctx, resources);
         child = c.sib;
     }
 
     if(self.sib) |sib| {
-        sib.draw(allocator, resources);
+        try sib.draw(allocator, event_ctx, resources);
     }
 }
 

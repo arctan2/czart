@@ -27,6 +27,7 @@ pub const PRICE_FONT_SIZE: f32 = 14;
 pub const CANDLE_SLOT: f32 = 20;
 pub const CANDLE_WIDTH: f32 = 18;
 pub const CHART_PAD = 0.05;
+pub const CROSSHAIR_COLOR = rl.Color{ .r = 230, .g = 0, .b = 180, .a = 255 };
 
 pub const Self = @This();
 
@@ -147,7 +148,7 @@ pub fn drawCrosshair(
     self: *const Self,
     allocator: std.mem.Allocator,
     resources: *const Resources,
-) void {
+) !void {
     const mouse = rl.getMousePosition();
 
     rl.beginScissorMode(
@@ -156,19 +157,18 @@ pub fn drawCrosshair(
         @intFromFloat(self.layout.width),
         @intFromFloat(self.layout.screen_rect.height),
     ); {
-        const crosshair_color = rl.Color{ .r = 230, .g = 0, .b = 180, .a = 255 };
         const dash_size = 3;
         const space_size = 3;
         rl.drawLineDashed(
             .{ .x = self.layout.left, .y = mouse.y },
             .{ .x = self.layout.right(), .y = mouse.y },
-            dash_size, space_size, crosshair_color
+            dash_size, space_size, CROSSHAIR_COLOR
         );
 
         rl.drawLineDashed(
             .{ .x = mouse.x, .y = self.layout.screen_rect.y },
             .{ .x = mouse.x, .y = self.layout.screen_rect.height },
-            dash_size, space_size, crosshair_color
+            dash_size, space_size, CROSSHAIR_COLOR
         );
     } rl.endScissorMode();
 
@@ -195,12 +195,12 @@ pub fn drawCrosshair(
 
     label_y = self.layout.screen_rect.height - (self.layout.screen_rect.y / 2) + 8.0;
 
-    const time_text = (
+    const time_text = try (
         if (shows_time)
             DateFormatter.toTextualTime(allocator, epoch_seconds)
         else
             DateFormatter.toTextual(allocator, epoch_seconds)
-    ) catch @panic("error in formating timestamp");
+    );
     defer allocator.free(time_text);
 
     const text_size = rl.measureTextEx(resources.font, time_text, PRICE_FONT_SIZE, 1);
@@ -264,7 +264,7 @@ pub fn drawYAxis(self: *Self, resources: *const Resources) void {
     }
 }
 
-pub fn drawXAxis(self: *Self, allocator: std.mem.Allocator, resources: *Resources) void {
+pub fn drawXAxis(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void {
     const axis_y = self.layout.screen_rect.height - (self.layout.top / 2);
     const label_y = axis_y + 8.0;
 
@@ -302,12 +302,12 @@ pub fn drawXAxis(self: *Self, allocator: std.mem.Allocator, resources: *Resource
         const ts = self.indexToTs(index);
         const epoch_seconds = @divFloor(ts, 1000);
 
-        const text = (
+        const text = try (
             if (shows_time)
                 DateFormatter.toTextualTime(allocator, epoch_seconds)
             else
                 DateFormatter.toTextual(allocator, epoch_seconds)
-        ) catch continue;
+        );
         defer allocator.free(text);
 
         const text_size = rl.measureTextEx(resources.font, text, PRICE_FONT_SIZE, 1);

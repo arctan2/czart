@@ -54,8 +54,8 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
     }
 }
 
-pub fn draw(self: *Self, allocator: std.mem.Allocator) void {
-    self.root.region.draw(allocator, &self.resources);
+pub fn draw(self: *Self, allocator: std.mem.Allocator) !void {
+    try self.root.region.draw(allocator, &self.event_ctx, &self.resources);
 }
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {

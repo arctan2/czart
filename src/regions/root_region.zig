@@ -43,7 +43,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.destroy(self);
 }
 
-fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) void {
+fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void {
     rl.drawRectangleV(
         .{ .x = self.layout.left, .y = self.layout.top },
         .{ .x = self.layout.width, .y = self.layout.height },
@@ -51,10 +51,10 @@ fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) void {
     );
 
     self.candle_chart.drawYAxis(resources);
-    self.candle_chart.drawXAxis(allocator, resources);
+    try self.candle_chart.drawXAxis(allocator, resources);
     self.candle_chart.drawCandles();
     if(self.indicator_picker_region_ptr == null) {
-        self.candle_chart.drawCrosshair(allocator, resources);
+        try self.candle_chart.drawCrosshair(allocator, resources);
     }
 }
 
@@ -153,9 +153,9 @@ fn handleChildDestroyRegion(ptr: *anyopaque, child: *Region) void {
     }
 }
 
-fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, resources: *Resources) void {
+fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *Region.EventCtx, resources: *Resources) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
-    self.draw(allocator, resources);
+    try self.draw(allocator, resources);
 }
 
 fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {

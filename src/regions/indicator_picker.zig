@@ -8,12 +8,62 @@ const Events = @import("events").Events;
 const Resources = @import("resources");
 const Region = @import("region");
 const rgui = @import("raygui");
+const widgets = @import("widgets");
 
 const Self = @This();
 
+var ITEMS_MAP = [_]widgets.SearchSelect.Item {
+    .{ .name = "SMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+    .{ .name = "EMA", .is_selected = false },
+};
+
 layout: Layout,
 region: Region,
-buf: [:0]u8,
+search_select_widget: widgets.SearchSelect,
 
 pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle) !*Self {
     var self = try allocator.create(Self);
@@ -25,12 +75,8 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle) !*Se
             .handleEventsFn = handleEventsRegion,
             .destroyFn = deinitRegion
         },
-        .buf = try allocator.allocSentinel(u8, 64, 0)
+        .search_select_widget = try .init(allocator, &ITEMS_MAP, &self.layout)
     };
-
-    for(0..self.buf.len) |i| {
-        self.buf[i] = 0;
-    }
 
     self.computeLayout();
 
@@ -38,39 +84,12 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle) !*Se
 }
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+    self.search_select_widget.deinit(allocator);
     allocator.destroy(self);
-    allocator.free(self.buf);
 }
 
-fn draw(self: *Self, _: std.mem.Allocator, resources: *Resources) void {
-    rl.drawRectangleV(
-        .{ .x = self.layout.left, .y = self.layout.top },
-        .{ .x = self.layout.width, .y = self.layout.height },
-        .{ .r = 0, .g = 0, .b = 0, .a = 255 }
-    );
-
-    rgui.setFont(resources.font);
-    rgui.setStyle(.default, .{ .default = .text_size }, 20);
-
-    // Background inside the textbox
-    rgui.setStyle(.default, .{ .default = .background_color }, 245);
-
-    // Text
-    rgui.setStyle(.textbox, .{ .control = .text_color_pressed }, rl.Color.white.toInt());
-    rgui.setStyle(.textbox, .{ .control = .border_width }, 0);
-    rgui.setStyle(.textbox, .{ .control = .base_color_pressed }, (rl.Color{ .r = 30, .g = 30, .b = 30, .a = 255 }).toInt());
-    rgui.setStyle(.textbox, .{ .control = .base_color_focused }, rl.Color.green.toInt());
-
-    _ = rgui.textBox(
-        .{
-            .x = self.layout.left + 10,
-            .y = self.layout.top + 10,
-            .width = self.layout.width - 20,
-            .height = 38,
-        },
-        self.buf,
-        true,
-    );
+fn draw(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
+    try self.search_select_widget.draw(allocator, ctx, resources);
 }
 
 fn scroll(_: *Self, _: *Region.EventCtx) void {
@@ -90,7 +109,7 @@ fn computeLayout(self: *Self) void {
     self.layout.top = self.layout.screen_rect.height * 0.1;
 }
 
-fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *Region.EventCtx) !bool {
+fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !bool {
     var self: *Self = @ptrCast(@alignCast(ptr));
 
     if(rl.isWindowResized()) {
@@ -99,14 +118,17 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *Region.
 
     if(rl.isKeyPressed(.escape)) {
         self.region.destroy(allocator);
+        return true;
     }
+
+    self.search_select_widget.handleEvents(ctx);
 
     return true;
 }
 
-fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, resources: *Resources) void {
+fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
-    self.draw(allocator, resources);
+    try self.draw(allocator, ctx, resources);
 }
 
 fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {

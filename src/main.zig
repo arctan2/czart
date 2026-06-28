@@ -134,7 +134,7 @@ pub fn main(init: std.process.Init) !void {
 
         rl.clearBackground(.{ .r = 10, .g = 10, .b = 15, .a = 255 });
         try root.handleEvents(gpa);
-        root.draw(gpa);
+        try root.draw(gpa);
         rl.drawFPS(10, 10);
     }
 }

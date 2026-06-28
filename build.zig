@@ -61,7 +61,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "common", .module = common },
             .{ .name = "layout", .module = layout },
             .{ .name = "raylib", .module = raylib },
+            .{ .name = "raygui", .module = raygui },
             .{ .name = "resources", .module = resources },
+            .{ .name = "region", .module = region },
         },
     });
 
@@ -107,6 +109,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "raylib", .module = raylib },
                 .{ .name = "region", .module = region },
                 .{ .name = "raygui", .module = raygui },
+                .{ .name = "widgets", .module = widgets },
             },
         }),
     });
