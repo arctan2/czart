@@ -18,23 +18,29 @@ timeframe: Timeframe = .m1,
 layout: *Layout,
 candle_chart: *charts.CandleChart,
 region: Region,
-indicator_picker_region_ptr: ?*Region = null,
+indicator_picker: *IndicatorPicker,
 
 pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, candles: []charts.CandleChart.Candle) !*Self {
     const self = try allocator.create(Self);
     var candle_chart = try allocator.create(charts.CandleChart);
     candle_chart.* = .init(screen_rect, candles);
+
+    const indicator_picker = try IndicatorPicker.init(allocator, screen_rect, candle_chart);
+
     self.* = .{
         .layout = &candle_chart.layout,
         .candle_chart = candle_chart,
+        .indicator_picker = indicator_picker,
         .region = .{
             .ptr = @ptrCast(self),
             .drawFn = drawRegion,
             .handleEventsFn = handleEventsRegion,
-            .childWillDestroyFn = handleChildDestroyRegion,
             .destroyFn = deinitRegion
         }
     };
+
+    self.region.setChild(&indicator_picker.region);
+
     return self;
 }
 
@@ -53,7 +59,7 @@ fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void 
     self.candle_chart.drawYAxis(resources);
     try self.candle_chart.drawXAxis(allocator, resources);
     self.candle_chart.drawCandles();
-    if(self.indicator_picker_region_ptr == null) {
+    if(!self.indicator_picker.is_active) {
         try self.candle_chart.drawCrosshair(allocator, resources);
     }
 }
@@ -119,18 +125,16 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
         self.layout.width = self.layout.screen_rect.width - charts.CandleChart.Y_AXIS_WIDTH;
     }
 
+    if(!self.indicator_picker.is_active and rl.isKeyPressed(.o)) {
+        self.indicator_picker.setIsActive(true);
+        while (rl.getCharPressed() != 0) {}
+        return true;
+    }
+
     if(self.region.child) |child| {
         if(try child.handleEvents(allocator, ctx)) {
             return true;
         }
-    }
-
-    if(rl.isKeyPressed(.o)) {
-        const ip = try IndicatorPicker.init(allocator, self.layout.screen_rect);
-        self.region.setChild(&ip.region);
-        self.indicator_picker_region_ptr = &ip.region;
-        while (rl.getCharPressed() != 0) {}
-        return true;
     }
 
     self.handleEvents(ctx);
@@ -144,13 +148,6 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
     }
 
     return true;
-}
-
-fn handleChildDestroyRegion(ptr: *anyopaque, child: *Region) void {
-    var self: *Self = @ptrCast(@alignCast(ptr));
-    if(child == self.indicator_picker_region_ptr) {
-        self.indicator_picker_region_ptr = null;
-    }
 }
 
 fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *Region.EventCtx, resources: *Resources) !void {

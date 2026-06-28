@@ -1,7 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
 const charts = @import("charts");
-const Layout = @import("layout");
 
 const Self = @This();
 
@@ -20,12 +19,8 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.free(self.points);
 }
 
-pub fn setPeriod(self: *Self, allocator: std.mem.Allocator, period: usize) !void {
-    self.period = period;
-    self.points = try allocator.realloc(rl.Vector2, self.points, self.candles.len - period + 1);
-}
-
-fn computeEMA(self: *const Self, layout: *const Layout, candles: []charts.CandleChart.Candle) void {
+fn computeEMA(self: *const Self, chart: *const charts.CandleChart) void {
+    const candles = chart.candles;
     if (candles.len < self.period) return;
 
     var sum: f32 = 0;
@@ -37,8 +32,8 @@ fn computeEMA(self: *const Self, layout: *const Layout, candles: []charts.Candle
     var prev_ema = sum / @as(f32, @floatFromInt(self.period));
 
     self.points[0] = .{
-        .x = layout.indexToScreenX(@floatFromInt(self.period - 1)),
-        .y = layout.priceToScreenY(prev_ema),
+        .x = chart.indexToScreenX(@floatFromInt(self.period - 1)),
+        .y = chart.priceToScreenY(prev_ema),
     };
 
     const M: f32 = 2.0 / @as(f32, @floatFromInt(self.period + 1));
@@ -49,13 +44,13 @@ fn computeEMA(self: *const Self, layout: *const Layout, candles: []charts.Candle
         prev_ema = ema;
 
         self.points[i - self.period + 1] = .{
-            .x = layout.indexToScreenX(@floatFromInt(i)),
-            .y = layout.priceToScreenY(ema),
+            .x = chart.indexToScreenX(@floatFromInt(i)),
+            .y = chart.priceToScreenY(ema),
         };
     }
 }
 
-pub fn draw(self: *const Self, layout: *const Layout, candles: []charts.CandleChart.Candle) void {
-    self.computeEMA(layout, candles);
-    charts.LineChart.draw(layout, self.points, .{ .r = 0, .g = 150, .b = 255, .a = 255 });
+pub fn draw(self: *const Self, chart: *const charts.CandleChart) void {
+    self.computeEMA(chart);
+    charts.LineChart.draw(&chart.layout, self.points, .{ .r = 0, .g = 150, .b = 255, .a = 255 });
 }

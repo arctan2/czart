@@ -1,7 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
 const charts = @import("charts");
-const Layout = @import("layout");
 
 const Self = @This();
 
@@ -20,7 +19,8 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.free(self.points);
 }
 
-fn computeSMA(self: *const Self, layout: *const Layout, candles: []charts.CandleChart.Candle) void {
+fn computeSMA(self: *const Self, chart: *const charts.CandleChart) void {
+    const candles = chart.candles;
     if (candles.len < self.period) return;
 
     var sum: f32 = 0;
@@ -30,8 +30,8 @@ fn computeSMA(self: *const Self, layout: *const Layout, candles: []charts.Candle
     }
 
     self.points[0] = .{
-        .x = layout.indexToScreenX(@floatFromInt(self.period - 1)),
-        .y = layout.priceToScreenY(sum / @as(f32, @floatFromInt(self.period))),
+        .x = chart.indexToScreenX(@floatFromInt(self.period - 1)),
+        .y = chart.priceToScreenY(sum / @as(f32, @floatFromInt(self.period))),
     };
 
     for (self.period..candles.len) |i| {
@@ -39,13 +39,13 @@ fn computeSMA(self: *const Self, layout: *const Layout, candles: []charts.Candle
         sum -= candles[i - self.period].close;
 
         self.points[i - self.period + 1] = .{
-            .x = layout.indexToScreenX(@floatFromInt(i)),
-            .y = layout.priceToScreenY(sum / @as(f32, @floatFromInt(self.period))),
+            .x = chart.indexToScreenX(@floatFromInt(i)),
+            .y = chart.priceToScreenY(sum / @as(f32, @floatFromInt(self.period))),
         };
     }
 }
 
-pub fn draw(self: *const Self, layout: *const Layout, candles: []charts.CandleChart.Candle) void {
-    self.computeSMA(layout, candles);
-    charts.LineChart.draw(layout, self.points, .{ .r = 150, .g = 150, .b = 255, .a = 255 });
+pub fn draw(self: *const Self, chart: *const charts.CandleChart) void {
+    self.computeSMA(chart);
+    charts.LineChart.draw(&chart.layout, self.points, .{ .r = 150, .g = 150, .b = 255, .a = 255 });
 }

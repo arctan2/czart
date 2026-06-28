@@ -22,6 +22,8 @@ const SCROLL_BAR_COLOR = rl.Color{ .r = 230, .g = 0, .b = 180, .a = 255 };
 const PANEL_COLOR = rl.Color{ .r = 15, .g = 0, .b = 15, .a = 255 };
 
 items: []Item,
+filtered: []usize,
+filtered_len: usize = 0,
 scroll_offset: f32 = 0,
 layout: *Layout,
 buf: [:0]u8,
@@ -30,25 +32,63 @@ pub fn init(allocator: std.mem.Allocator, items: []Item, layout: *Layout) !Self 
     const buf = try allocator.allocSentinel(u8, 64, 0);
     @memset(buf, 0);
 
-    return .{
+    const filtered = try allocator.alloc(usize, items.len);
+
+    var self: Self = .{
         .items = items,
+        .filtered = filtered,
         .layout = layout,
         .buf = buf
     };
+    self.applyFilter();
+    return self;
 }
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.free(self.buf);
+    allocator.free(self.filtered);
+}
+
+fn filterText(self: *const Self) []const u8 {
+    return std.mem.sliceTo(self.buf, 0);
+}
+
+fn matches(name: []const u8, needle: []const u8) bool {
+    if (needle.len == 0) return true;
+    var name_buf: [128]u8 = undefined;
+    var needle_buf: [128]u8 = undefined;
+    if (name.len > name_buf.len or needle.len > needle_buf.len) return true;
+
+    const lname = std.ascii.lowerString(name_buf[0..name.len], name);
+    const lneedle = std.ascii.lowerString(needle_buf[0..needle.len], needle);
+    return std.mem.indexOf(u8, lname, lneedle) != null;
+}
+
+fn applyFilter(self: *Self) void {
+    const needle = self.filterText();
+    var n: usize = 0;
+    for (self.items, 0..) |it, i| {
+        if (matches(it.name, needle)) {
+            self.filtered[n] = i;
+            n += 1;
+        }
+    }
+    self.filtered_len = n;
 }
 
 fn scrollHeight(self: *const Self) f32 {
-    return (@as(f32, @floatFromInt(self.items.len)) + ITEM_PAD) * ITEM_HEIGHT;
+    return (@as(f32, @floatFromInt(self.filtered_len)) + ITEM_PAD) * ITEM_HEIGHT;
 }
 
 fn drawScrollBar(self: *Self, top: f32, list_height: f32) void {
     const x = self.layout.right() - SCROLL_BAR_WIDTH - 1;
     const scroll_height = self.scrollHeight();
     const h = scroll_height - (self.layout.height / 2);
+
+    if(h < list_height) {
+        return;
+    }
+
     const ratio = list_height / scroll_height;
     const thumb_height = list_height * ratio;
     const thumb_top = top + (1 - (self.scroll_offset / h * (list_height - thumb_height)));
@@ -64,6 +104,26 @@ fn drawScrollBar(self: *Self, top: f32, list_height: f32) void {
         .{ .x = SCROLL_BAR_WIDTH, .y = thumb_height },
         SCROLL_BAR_COLOR
     );
+}
+
+fn itemRect(self: *const Self, list_top: f32, row: usize) rl.Rectangle {
+    const i: f32 = @floatFromInt(row);
+    return .{
+        .x = (self.layout.left + ITEM_PAD),
+        .y = list_top + ((ITEM_HEIGHT + ITEM_PAD) * i) + self.scroll_offset,
+        .width = self.layout.width - (ITEM_PAD * 2),
+        .height = ITEM_HEIGHT,
+    };
+}
+
+fn listTop(self: *const Self) f32 {
+    const input_box_height = ITEM_HEIGHT + ITEM_PAD;
+    return self.layout.top + input_box_height + ITEM_PAD;
+}
+
+fn listHeight(self: *const Self) f32 {
+    const input_box_height = ITEM_HEIGHT + ITEM_PAD;
+    return self.layout.height - input_box_height - (ITEM_PAD * 2);
 }
 
 pub fn draw(self: *Self, _: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
@@ -93,9 +153,10 @@ pub fn draw(self: *Self, _: std.mem.Allocator, ctx: *Region.EventCtx, resources:
         true,
     );
 
-    const input_box_height = ITEM_HEIGHT + ITEM_PAD;
-    const list_top = self.layout.top + input_box_height + ITEM_PAD;
-    const list_height = self.layout.height - input_box_height - (ITEM_PAD * 2); 
+    self.applyFilter();
+
+    const list_top = self.listTop();
+    const list_height = self.listHeight();
 
     rl.beginScissorMode(
         @intFromFloat(self.layout.left + ITEM_PAD),
@@ -104,12 +165,9 @@ pub fn draw(self: *Self, _: std.mem.Allocator, ctx: *Region.EventCtx, resources:
         @intFromFloat(list_height),
     );
 
-    for(self.items, 0..self.items.len) |it, i_usize| {
-        const i: f32 = @floatFromInt(i_usize);
-        const rec: rl.Rectangle = .{
-             .x = (self.layout.left + ITEM_PAD), .y = list_top + ((ITEM_HEIGHT + ITEM_PAD) * i) + self.scroll_offset,
-             .width = self.layout.width - (ITEM_PAD * 2), .height = ITEM_HEIGHT
-        };
+    for (self.filtered[0..self.filtered_len], 0..) |item_idx, row| {
+        const it = self.items[item_idx];
+        const rec = self.itemRect(list_top, row);
 
         var color: rl.Color = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
 
@@ -118,6 +176,10 @@ pub fn draw(self: *Self, _: std.mem.Allocator, ctx: *Region.EventCtx, resources:
         }
 
         rl.drawRectangleRec(rec, color);
+
+        if (it.is_selected) {
+            rl.drawRectangleLinesEx(rec, 1, ITEM_SELECTED_COLOR);
+        }
 
         rl.drawTextEx(
             resources.font, it.name,
@@ -133,7 +195,7 @@ pub fn draw(self: *Self, _: std.mem.Allocator, ctx: *Region.EventCtx, resources:
     self.drawScrollBar(list_top, list_height);
 }
 
-pub fn handleEvents(self: *Self, ctx: *Region.EventCtx) void {
+pub fn handleEvents(self: *Self, ctx: *Region.EventCtx) ?usize {
     if(ctx.wheel_d.y != 0) {
         const scroll_height = self.scrollHeight();
         if(scroll_height > self.layout.height) {
@@ -147,4 +209,27 @@ pub fn handleEvents(self: *Self, ctx: *Region.EventCtx) void {
             }
         }
     }
+
+    if (rl.isMouseButtonPressed(.left) and !ctx.isWheelScroll()) {
+        const mouse = rl.getMousePosition();
+        const list_top = self.listTop();
+        const list_height = self.listHeight();
+
+        const clip: rl.Rectangle = .{
+            .x = self.layout.left + ITEM_PAD,
+            .y = list_top,
+            .width = self.layout.width - (ITEM_PAD * 2),
+            .height = list_height,
+        };
+        if (rl.checkCollisionPointRec(mouse, clip)) {
+            for (self.filtered[0..self.filtered_len], 0..) |item_idx, row| {
+                const rec = self.itemRect(list_top, row);
+                if (rl.checkCollisionPointRec(mouse, rec)) {
+                    return item_idx;
+                }
+            }
+        }
+    }
+
+    return null;
 }
