@@ -52,15 +52,15 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
 fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void {
     rl.drawRectangleV(
         .{ .x = self.layout.left, .y = self.layout.top },
-        .{ .x = self.layout.width, .y = self.layout.height },
+        .{ .x = self.layout.width, .y = self.layout.scaledHeight() },
         Resources.CHART_BG
     );
 
     self.candle_chart.drawYAxis(resources);
     try self.candle_chart.drawXAxis(allocator, resources);
     self.candle_chart.drawCandles();
-    if(!self.indicator_picker.is_active) {
-        try self.candle_chart.drawCrosshair(allocator, resources);
+    if(!self.indicator_picker.is_active and rl.checkCollisionPointRec(rl.getMousePosition(), self.candle_chart.layout.getRectScaled())) {
+        try self.candle_chart.drawCrosshair(allocator, self.layout, &self.candle_chart.view.y, resources);
     }
 }
 
@@ -102,22 +102,29 @@ fn handleEvents(self: *Self, ctx: *Region.EventCtx) void {
             self.scroll(ctx, rl.isKeyDown(.left_shift) or rl.isKeyDown(.left_control));
         }
     }
-    
+
+    const owns_mouse_down = ctx.tryOwnMouseDown(@ptrCast(self), self.candle_chart.layout.getRectScaled());
+
     if (ctx.mouse_d) |mouse_d| {
         const index_per_pixel = ctx.drag_start_view_x.range() / self.layout.width;
         self.candle_chart.view.x.min = ctx.drag_start_view_x.min - mouse_d.x * index_per_pixel;
         self.candle_chart.view.x.max = ctx.drag_start_view_x.max - mouse_d.x * index_per_pixel;
 
-        const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.height;
-        self.candle_chart.view.y.min = ctx.drag_start_view_y.min + mouse_d.y * price_per_pixel;
-        self.candle_chart.view.y.max = ctx.drag_start_view_y.max + mouse_d.y * price_per_pixel;
+        if(ctx.state.y_pan == 0 and owns_mouse_down) {
+            const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.scaledHeight();
+            self.candle_chart.view.y.min = ctx.drag_start_view_y.min + mouse_d.y * price_per_pixel;
+            self.candle_chart.view.y.max = ctx.drag_start_view_y.max + mouse_d.y * price_per_pixel;
+        }
     } else if(rl.isMouseButtonDown(.left)) {
         ctx.drag_start_view_x = self.candle_chart.view.x;
-        ctx.drag_start_view_y = self.candle_chart.view.y;
+
+        if(ctx.state.view_y == 0 and owns_mouse_down) {
+            ctx.drag_start_view_y = self.candle_chart.view.y;
+        }
     }
 }
 
-fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !bool {
+fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
 
     if(rl.isWindowResized()) {
@@ -128,12 +135,13 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
     if(!self.indicator_picker.is_active and rl.isKeyPressed(.o)) {
         self.indicator_picker.setIsActive(true);
         while (rl.getCharPressed() != 0) {}
-        return true;
+        return;
     }
 
     if(self.region.child) |child| {
-        if(try child.handleEvents(allocator, ctx)) {
-            return true;
+        try child.handleEvents(allocator, ctx);
+        if(ctx.state.y_axis_resize == 1) {
+            return;
         }
     }
 
@@ -146,8 +154,6 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
         self.candle_chart.view.y = mm.y;
         self.candle_chart.view.x = mm.x;
     }
-
-    return true;
 }
 
 fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *Region.EventCtx, resources: *Resources) !void {

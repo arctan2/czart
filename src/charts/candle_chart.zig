@@ -80,12 +80,12 @@ pub fn screenXToIndex(self: *const Self, sx: f32) f32 {
 
 pub fn priceToScreenY(self: *const Self, price: f32) f32 {
     const t = (price - self.view.y.min) / self.view.y.range();
-    return (self.layout.height * (1.0 - t)) + self.layout.top;
+    return (self.layout.scaledHeight() * (1.0 - t)) + self.layout.top;
 }
 
-pub fn screenYToPrice(self: *const Self, y: f32) f32 {
-    const t = 1.0 - ((y - self.layout.top) / self.layout.height);
-    return self.view.y.min + t * self.view.y.range();
+pub fn screenYToPrice(layout: *const Layout, view_y: *const MinMax, y: f32) f32 {
+    const t = 1.0 - ((y - layout.top) / layout.scaledHeight());
+    return view_y.min + t * view_y.range();
 }
 
 pub fn tickStride(self: *const Self) f32 {
@@ -109,7 +109,7 @@ pub fn drawCandles(self: *Self) void {
         @intFromFloat(self.layout.left),
         @intFromFloat(self.layout.top),
         @intFromFloat(self.layout.width),
-        @intFromFloat(self.layout.height),
+        @intFromFloat(self.layout.scaledHeight()),
     );
     defer rl.endScissorMode();
 
@@ -147,40 +147,42 @@ pub fn drawCandleAt(self: *Self, c: *const Candle, screen_x: f32, w: f32) void {
 pub fn drawCrosshair(
     self: *const Self,
     allocator: std.mem.Allocator,
+    layout: *const Layout,
+    view_y: *const MinMax,
     resources: *const Resources,
 ) !void {
     const mouse = rl.getMousePosition();
 
     rl.beginScissorMode(
-        @intFromFloat(self.layout.screen_rect.x),
-        @intFromFloat(self.layout.screen_rect.y),
-        @intFromFloat(self.layout.width),
-        @intFromFloat(self.layout.screen_rect.height),
+        @intFromFloat(layout.screen_rect.x),
+        @intFromFloat(layout.screen_rect.y),
+        @intFromFloat(layout.width),
+        @intFromFloat(layout.screen_rect.height),
     ); {
         const dash_size = 3;
         const space_size = 3;
         rl.drawLineDashed(
-            .{ .x = self.layout.left, .y = mouse.y },
-            .{ .x = self.layout.right(), .y = mouse.y },
+            .{ .x = layout.left, .y = mouse.y },
+            .{ .x = layout.right(), .y = mouse.y },
             dash_size, space_size, CROSSHAIR_COLOR
         );
 
         rl.drawLineDashed(
-            .{ .x = mouse.x, .y = self.layout.screen_rect.y },
-            .{ .x = mouse.x, .y = self.layout.screen_rect.height },
+            .{ .x = mouse.x, .y = layout.screen_rect.y },
+            .{ .x = mouse.x, .y = layout.screen_rect.height },
             dash_size, space_size, CROSSHAIR_COLOR
         );
     } rl.endScissorMode();
 
     var buf: [24]u8 = undefined;
-    const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{self.screenYToPrice(mouse.y)}) catch @panic("unable to convert float -> string");
+    const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{screenYToPrice(layout, view_y, mouse.y)}) catch @panic("unable to convert float -> string");
 
-    var label_x = self.layout.right() + 8.0;
+    var label_x = layout.right() + 8.0;
     var label_y = mouse.y - PRICE_FONT_SIZE / 2.0;
     const pad = 4;
     
     rl.drawRectangleV(
-        .{ .x = self.layout.right(), .y = label_y - pad },
+        .{ .x = layout.right(), .y = label_y - pad },
         .{ .x = Y_AXIS_WIDTH, .y = PRICE_FONT_SIZE + (pad * 2) },
         .{ .r = 255, .g = 255, .b = 255, .a = 255 }
     );
@@ -193,7 +195,7 @@ pub fn drawCrosshair(
     const epoch_seconds = @divFloor(ts, 1000);
     const shows_time = self.timeframe.showsTime();
 
-    label_y = self.layout.screen_rect.height - (self.layout.screen_rect.y / 2) + 8.0;
+    label_y = layout.screen_rect.height - (layout.screen_rect.y / 2) + 8.0;
 
     const time_text = try (
         if (shows_time)
@@ -226,13 +228,13 @@ pub fn drawYAxis(self: *Self, resources: *const Resources) void {
         @intFromFloat(r),
         @intFromFloat(self.layout.top),
         @intFromFloat(Y_AXIS_WIDTH),
-        @intFromFloat(self.layout.height),
+        @intFromFloat(self.layout.scaledHeight()),
         Resources.AXIS_BG,
     );
 
     rl.drawLineEx(
         .{ .x = r, .y = self.layout.top },
-        .{ .x = r, .y = self.layout.top + self.layout.height },
+        .{ .x = r, .y = self.layout.top + self.layout.scaledHeight() },
         1.0, Resources.AXIS_BORDER_COLOR,
     );
 

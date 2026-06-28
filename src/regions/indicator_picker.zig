@@ -17,6 +17,7 @@ const DEFAULT_PERIOD = 20;
 var ITEMS_MAP = [_]widgets.SearchSelect.Item{
     .{ .name = "SMA", .is_selected = false },
     .{ .name = "EMA", .is_selected = false },
+    .{ .name = "Moving average convergence divergence", .is_selected = false },
 };
 
 const ActiveIndicator = struct {
@@ -24,12 +25,14 @@ const ActiveIndicator = struct {
     impl: union(enum) {
         sma: indicators.SMA,
         ema: indicators.EMA,
+        macd: *indicators.MACD
     },
 
     fn deinit(self: *ActiveIndicator, allocator: std.mem.Allocator) void {
         switch (self.impl) {
             .sma => |*s| s.deinit(allocator),
             .ema => |*e| e.deinit(allocator),
+            .macd => |m| m.region.destroy(allocator),
         }
     }
 
@@ -37,6 +40,7 @@ const ActiveIndicator = struct {
         switch (self.impl) {
             .sma => |*s| s.draw(chart),
             .ema => |*e| e.draw(chart),
+            .macd => {},
         }
     }
 };
@@ -70,7 +74,10 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     for (self.active.items) |*ind| {
-        ind.deinit(allocator);
+        switch(ind.impl) {
+            .macd => {},
+            else => ind.deinit(allocator)
+        }
     }
     self.active.deinit(allocator);
     self.search_select_widget.deinit(allocator);
@@ -92,6 +99,11 @@ fn addIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) !v
     const impl: @FieldType(ActiveIndicator, "impl") = switch (item_index) {
         0 => .{ .sma = try indicators.SMA.init(allocator, candles, DEFAULT_PERIOD) },
         1 => .{ .ema = try indicators.EMA.init(allocator, candles, DEFAULT_PERIOD) },
+        2 => b: {
+            const macd_ind = try indicators.MACD.init(allocator, self.layout.screen_rect, self.candle_chart);
+            self.region.setChild(&macd_ind.region);
+            break :b .{ .macd = macd_ind };
+        },
         else => return,
     };
     try self.active.append(allocator, .{ .item_index = item_index, .impl = impl });
@@ -134,28 +146,35 @@ pub fn setIsActive(self: *Self, v: bool) void {
     @memset(self.search_select_widget.buf, 0);
 }
 
-fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !bool {
+fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
 
     if(rl.isWindowResized()) {
         self.computeLayout();
     }
 
-    if (!self.is_active) return false;
+    if(self.region.child) |child| {
+        try child.handleEvents(allocator, ctx);
+        if(ctx.state.y_axis_resize == 1) {
+            return;
+        }
+    }
+
+    if (!self.is_active) return;
     
     const mouse = rl.getMousePosition();
     const is_mouse_click = rl.isMouseButtonPressed(.left);
 
     if(rl.isKeyPressed(.escape) or (is_mouse_click and !rl.checkCollisionPointRec(mouse, self.layout.getRect()))) {
         self.is_active = false;
-        return true;
+        return;
     }
 
     if (self.search_select_widget.handleEvents(ctx)) |item_index| {
         try self.toggleIndicator(allocator, item_index);
     }
 
-    return true;
+    return;
 }
 
 fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {

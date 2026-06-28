@@ -127,12 +127,8 @@ fn listHeight(self: *const Self) f32 {
 }
 
 pub fn draw(self: *Self, _: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
-    const panel: rl.Rectangle = .{
-        .x = self.layout.left, .y = self.layout.top,
-        .width = self.layout.width, .height = self.layout.height,
-    };
-    rl.drawRectangleRec(panel, PANEL_COLOR);
-    rl.drawRectangleLinesEx(panel, 1, .{ .r = 100, .g = 100, .b = 100, .a = 255 });
+    self.layout.drawBox(PANEL_COLOR);
+    self.layout.drawBoxLine(.{ .r = 100, .g = 100, .b = 100, .a = 255 });
 
     rgui.setFont(resources.font);
     rgui.setStyle(.default, .{ .default = .text_size }, 20);

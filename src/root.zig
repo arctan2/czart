@@ -25,6 +25,7 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []
 pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
     const mouse = rl.getMousePosition();
     const wheel = rl.getMouseWheelMoveV();
+    self.event_ctx.state = .{};
 
     self.event_ctx.wheel_d = .{
         .x = wheel.x * self.event_ctx.zoom_sensitivity,
@@ -36,7 +37,7 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
         SCREEN_RECT.width = @as(f32, @floatFromInt(rl.getScreenWidth())) - (SCREEN_RECT.x * 2);
     }
 
-    _ = try self.root.region.handleEvents(allocator, &self.event_ctx);
+    try self.root.region.handleEvents(allocator, &self.event_ctx);
 
     if (rl.isMouseButtonDown(.left)) {
         if (self.event_ctx.drag_start_mouse) |start| {
@@ -51,6 +52,7 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
     if (rl.isMouseButtonReleased(.left)) {
         self.event_ctx.drag_start_mouse = null;
         self.event_ctx.mouse_d = null;
+        self.event_ctx.captured = null;
     }
 }
 

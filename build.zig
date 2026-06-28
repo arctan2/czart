@@ -91,6 +91,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "resources", .module = resources },
             .{ .name = "widgets", .module = widgets },
             .{ .name = "raygui", .module = raygui },
+            .{ .name = "region", .module = region },
         },
     });
 
