@@ -30,9 +30,8 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
             .destroyFn = deinitRegion
         },
         .candle_chart = candle_chart,
-        .view_y = .{ .max = 5, .min = -5 }
+        .view_y = .{ .max = 2, .min = -2 }
     };
-
 
     self.candle_chart.layout.height_scale = 0.7;
 
@@ -193,11 +192,15 @@ fn handleEvents(self: *Self, ctx: *EventCtx) void {
     }
 }
 
-fn handleEventsRegion(ptr: *anyopaque, _: std.mem.Allocator, ctx: *EventCtx) !void {
+fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
     const self: *Self = @alignCast(@ptrCast(ptr));
 
     if(rl.isWindowResized()) {
         self.computeLayout();
+    }
+
+    if(self.region.sib) |s| {
+        try s.handleEvents(allocator, ctx);
     }
 
     self.handleEvents(ctx);

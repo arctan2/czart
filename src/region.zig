@@ -116,20 +116,47 @@ pub fn destroy(self: *Self, allocator: std.mem.Allocator) void {
     self.destroyFn(self.ptr, allocator);
 }
 
-pub fn setChild(self: *Self, region: *Self) void {
+pub fn getPrevSib(self: *Self) ?*Self {
+    if(self.parent) |parent| {
+        if(parent.child == self) return null;
+
+        var cur = self.child;
+        while(cur) |c| {
+            if(c.sib == self) return c;
+            cur = c.sib;
+        }
+    }
+    return null;
+}
+
+pub fn appendChild(self: *Self, region: *Self) void {
     if(self.child) |child| {
-        child.setSib(region);
+        child.appendSib(region);
     } else {
         self.child = region;
         region.parent = self;
     }
 }
 
-pub fn setSib(self: *Self, region: *Self) void {
+pub fn appendSib(self: *Self, region: *Self) void {
     if(self.sib) |sib| {
-        sib.setSib(region);
+        sib.appendSib(region);
     } else {
         self.sib = region;
+        region.parent = self.parent;
     }
+}
+
+pub fn insertChild(self: *Self, region: *Self) void {
+    if(self.child) |child| region.sib = child;
+    self.child = region;
+    region.parent = self;
+}
+
+pub fn insertAsPrevSib(self: *Self, region: *Self) void {
+    if(self.parent == null) return;
+    (if(self.getPrevSib()) |sib| sib.sib else self.parent.?.child) = region;
+    region.sib = self;
+    region.parent = self.parent;
 }
 

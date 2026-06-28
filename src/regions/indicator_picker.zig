@@ -101,7 +101,7 @@ fn addIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) !v
         1 => .{ .ema = try indicators.EMA.init(allocator, candles, DEFAULT_PERIOD) },
         2 => b: {
             const macd_ind = try indicators.MACD.init(allocator, self.layout.screen_rect, self.candle_chart);
-            self.region.setChild(&macd_ind.region);
+            self.region.insertAsPrevSib(&macd_ind.region);
             break :b .{ .macd = macd_ind };
         },
         else => return,
@@ -153,15 +153,10 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
         self.computeLayout();
     }
 
-    if(self.region.child) |child| {
-        try child.handleEvents(allocator, ctx);
-        if(ctx.state.y_axis_resize == 1) {
-            return;
-        }
+    if (!self.is_active) {
+        return;
     }
 
-    if (!self.is_active) return;
-    
     const mouse = rl.getMousePosition();
     const is_mouse_click = rl.isMouseButtonPressed(.left);
 

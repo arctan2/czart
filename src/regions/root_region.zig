@@ -39,7 +39,7 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
         }
     };
 
-    self.region.setChild(&indicator_picker.region);
+    self.region.appendChild(&indicator_picker.region);
 
     return self;
 }
