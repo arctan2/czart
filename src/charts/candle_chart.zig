@@ -27,7 +27,7 @@ pub const PRICE_FONT_SIZE: f32 = 14;
 pub const CANDLE_SLOT: f32 = 20;
 pub const CANDLE_WIDTH: f32 = 18;
 pub const CHART_PAD = 0.05;
-pub const CROSSHAIR_COLOR = rl.Color{ .r = 230, .g = 0, .b = 180, .a = 255 };
+pub const CROSSHAIR_COLOR = rl.Color{ .r = 255, .g = 255, .b = 255, .a = 255 };
 
 pub const Self = @This();
 
@@ -113,8 +113,7 @@ pub fn drawCandles(self: *Self) void {
     );
     defer rl.endScissorMode();
 
-    const index_range = self.view.x.max - self.view.x.min;
-    const slot_px = self.layout.width / index_range;
+    const slot_px = self.layout.width / self.view.x.range();
     const w = slot_px * 0.8;
 
     for (self.candles, 0..self.candles.len) |*c, i| {
