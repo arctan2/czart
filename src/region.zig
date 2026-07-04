@@ -11,10 +11,9 @@ const Self = @This();
 pub const EventCtx = struct {
     const deadzone = 0.01;
     const EventState = packed struct {
-        y_axis_resize: u1 = 0,
-        x_axis_resize: u1 = 0,
+        view_y_resize: u1 = 0,
         y_pan: u1 = 0,
-        view_y: u1 = 0,
+        mouse_left_down: u1 = 0,
     };
 
     zoom_sensitivity: f32 = 0.05,

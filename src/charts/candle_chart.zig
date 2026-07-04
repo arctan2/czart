@@ -80,11 +80,11 @@ pub fn screenXToIndex(self: *const Self, sx: f32) f32 {
 
 pub fn priceToScreenY(self: *const Self, price: f32) f32 {
     const t = (price - self.view.y.min) / self.view.y.range();
-    return (self.layout.scaledHeight() * (1.0 - t)) + self.layout.top;
+    return (self.layout.height * (1.0 - t)) + self.layout.top;
 }
 
 pub fn screenYToPrice(layout: *const Layout, view_y: *const MinMax, y: f32) f32 {
-    const t = 1.0 - ((y - layout.top) / layout.scaledHeight());
+    const t = 1.0 - ((y - layout.top) / layout.height);
     return view_y.min + t * view_y.range();
 }
 
@@ -109,7 +109,7 @@ pub fn drawCandles(self: *Self) void {
         @intFromFloat(self.layout.left),
         @intFromFloat(self.layout.top),
         @intFromFloat(self.layout.width),
-        @intFromFloat(self.layout.scaledHeight()),
+        @intFromFloat(self.layout.height),
     );
     defer rl.endScissorMode();
 
@@ -227,13 +227,13 @@ pub fn drawYAxis(self: *Self, resources: *const Resources) void {
         @intFromFloat(r),
         @intFromFloat(self.layout.top),
         @intFromFloat(Y_AXIS_WIDTH),
-        @intFromFloat(self.layout.scaledHeight()),
+        @intFromFloat(self.layout.height),
         Resources.AXIS_BG,
     );
 
     rl.drawLineEx(
         .{ .x = r, .y = self.layout.top },
-        .{ .x = r, .y = self.layout.top + self.layout.scaledHeight() },
+        .{ .x = r, .y = self.layout.top + self.layout.height },
         1.0, Resources.AXIS_BORDER_COLOR,
     );
 

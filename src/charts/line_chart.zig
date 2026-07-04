@@ -13,7 +13,7 @@ pub fn draw(
         @intFromFloat(layout.left),
         @intFromFloat(layout.top),
         @intFromFloat(layout.width),
-        @intFromFloat(layout.scaledHeight()),
+        @intFromFloat(layout.height),
     );
     defer rl.endScissorMode();
 

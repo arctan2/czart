@@ -9,7 +9,6 @@ top: f32 = 0,
 width: f32 = 0,
 height: f32 = 0,
 screen_rect: *const rl.Rectangle,
-height_scale: f32 = 1.0,
 
 pub fn initRect(screen_rect: *const rl.Rectangle, rect: rl.Rectangle) Self {
     return .{
@@ -25,10 +24,6 @@ pub fn empty(screen_rect: *const rl.Rectangle) Self {
     return .{ .screen_rect = screen_rect };
 }
 
-pub fn scaledHeight(self: *const Self) f32 {
-    return self.height * self.height_scale;
-}
-
 pub inline fn right(self: *const Self) f32 {
     return self.left + self.width;
 }
@@ -37,24 +32,11 @@ pub inline fn bottom(self: *const Self) f32 {
     return self.top + self.height;
 }
 
-pub inline fn scaledBottom(self: *const Self) f32 {
-    return self.top + self.scaledHeight();
-}
-
 pub fn getRect(self: *const Self) rl.Rectangle {
     return .{
         .x = self.left,
         .y = self.top,
         .height = self.height,
-        .width = self.width
-    };
-}
-
-pub fn getRectScaled(self: *const Self) rl.Rectangle {
-    return .{
-        .x = self.left,
-        .y = self.top,
-        .height = self.scaledHeight(),
         .width = self.width
     };
 }

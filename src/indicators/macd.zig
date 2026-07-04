@@ -33,8 +33,6 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
         .view_y = .{ .max = 2, .min = -2 }
     };
 
-    self.candle_chart.layout.height_scale = 0.7;
-
     self.computeLayout();
     self.computeMACD();
     self.computeMinMaxY();
@@ -43,14 +41,15 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
 }
 
 fn computeLayout(self: *Self) void {
-    self.layout.height = self.candle_chart.layout.height * 0.3;
+    const h = self.candle_chart.layout.height;
+    self.candle_chart.layout.height = h * (1 - 0.3);
+    self.layout.height = h * 0.3;
     self.layout.width = self.layout.screen_rect.width - charts.CandleChart.Y_AXIS_WIDTH;
     self.layout.left = self.candle_chart.layout.left;
-    self.layout.top = self.candle_chart.layout.scaledBottom();
+    self.layout.top = self.candle_chart.layout.bottom();
 }
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
-    self.candle_chart.layout.height_scale = 1;
     allocator.free(self.macd_y_points);
     allocator.free(self.signal_y_points);
     allocator.destroy(self);
@@ -180,7 +179,7 @@ fn drawLineChart(self: *Self, points: []f32, color: rl.Color, start_idx: usize) 
         @intFromFloat(self.layout.left),
         @intFromFloat(self.layout.top),
         @intFromFloat(self.layout.width),
-        @intFromFloat(self.layout.scaledHeight()),
+        @intFromFloat(self.layout.height),
     );
     defer rl.endScissorMode();
 
@@ -205,7 +204,7 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
         @intFromFloat(self.layout.left),
         @intFromFloat(self.layout.top),
         @intFromFloat(self.layout.width),
-        @intFromFloat(self.layout.scaledHeight()),
+        @intFromFloat(self.layout.height),
     );
     defer rl.endScissorMode();
 
@@ -260,18 +259,18 @@ fn handleEvents(self: *Self, ctx: *EventCtx) void {
             self.view_y.max = new_max;
         }
 
-        ctx.state.y_axis_resize = 1;
+        ctx.state.view_y_resize = 1;
         return;
     }
 
     if (ctx.mouse_d) |mouse_d| {
-        const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.scaledHeight();
+        const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.height;
         self.view_y.min = ctx.drag_start_view_y.min + mouse_d.y * price_per_pixel;
         self.view_y.max = ctx.drag_start_view_y.max + mouse_d.y * price_per_pixel;
         ctx.state.y_pan = 1;
     } else if(rl.isMouseButtonDown(.left)) {
         ctx.drag_start_view_y = self.view_y;
-        ctx.state.view_y = 1;
+        ctx.state.mouse_left_down = 1;
     }
 }
 
@@ -280,6 +279,10 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Event
 
     if(rl.isWindowResized()) {
         self.computeLayout();
+        self.computeMinMaxY();
+    }
+
+    if(rl.isKeyPressed(.r)) {
         self.computeMinMaxY();
     }
 

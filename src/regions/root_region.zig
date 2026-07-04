@@ -52,14 +52,14 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
 fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void {
     rl.drawRectangleV(
         .{ .x = self.layout.left, .y = self.layout.top },
-        .{ .x = self.layout.width, .y = self.layout.scaledHeight() },
+        .{ .x = self.layout.width, .y = self.layout.height },
         Resources.CHART_BG
     );
 
     self.candle_chart.drawYAxis(resources);
     try self.candle_chart.drawXAxis(allocator, resources);
     self.candle_chart.drawCandles();
-    if(!self.indicator_picker.is_active and rl.checkCollisionPointRec(rl.getMousePosition(), self.candle_chart.layout.getRectScaled())) {
+    if(!self.indicator_picker.is_active and rl.checkCollisionPointRec(rl.getMousePosition(), self.candle_chart.layout.getRect())) {
         try self.candle_chart.drawCrosshair(allocator, self.layout, &self.candle_chart.view.y, resources);
     }
 }
@@ -103,7 +103,7 @@ fn handleEvents(self: *Self, ctx: *Region.EventCtx) void {
         }
     }
 
-    const owns_mouse_down = ctx.tryOwnMouseDown(@ptrCast(self), self.candle_chart.layout.getRectScaled());
+    const owns_mouse_down = ctx.tryOwnMouseDown(@ptrCast(self), self.candle_chart.layout.getRect());
 
     if (ctx.mouse_d) |mouse_d| {
         const index_per_pixel = ctx.drag_start_view_x.range() / self.layout.width;
@@ -111,14 +111,14 @@ fn handleEvents(self: *Self, ctx: *Region.EventCtx) void {
         self.candle_chart.view.x.max = ctx.drag_start_view_x.max - mouse_d.x * index_per_pixel;
 
         if(ctx.state.y_pan == 0 and owns_mouse_down) {
-            const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.scaledHeight();
+            const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.height;
             self.candle_chart.view.y.min = ctx.drag_start_view_y.min + mouse_d.y * price_per_pixel;
             self.candle_chart.view.y.max = ctx.drag_start_view_y.max + mouse_d.y * price_per_pixel;
         }
     } else if(rl.isMouseButtonDown(.left)) {
         ctx.drag_start_view_x = self.candle_chart.view.x;
 
-        if(ctx.state.view_y == 0 and owns_mouse_down) {
+        if(ctx.state.mouse_left_down == 0 and owns_mouse_down) {
             ctx.drag_start_view_y = self.candle_chart.view.y;
         }
     }
@@ -140,7 +140,7 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
 
     if(self.region.child) |child| {
         try child.handleEvents(allocator, ctx);
-        if(ctx.state.y_axis_resize == 1) {
+        if(ctx.state.view_y_resize == 1) {
             return;
         }
     }
