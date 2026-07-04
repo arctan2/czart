@@ -35,7 +35,7 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
             .ptr = @ptrCast(self),
             .drawFn = drawRegion,
             .handleEventsFn = handleEventsRegion,
-            .destroyFn = deinitRegion
+            .destroyFn = deinitRegion,
         }
     };
 

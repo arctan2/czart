@@ -44,6 +44,10 @@ pub const EventCtx = struct {
 pub fn emptyChildWillDestroyFn(_: *anyopaque, _: *Self) void {
 }
 
+pub fn emptyGetLayoutFn(_: *anyopaque) ?*Layout {
+    return null;
+}
+
 ptr: *anyopaque,
 parent: ?*Self = null,
 child: ?*Self = null,
@@ -51,6 +55,7 @@ sib: ?*Self = null,
 
 handleEventsFn: *const fn(*anyopaque, allocator: std.mem.Allocator, event_ctx: *EventCtx) error{ OutOfMemory }!void,
 drawFn: *const fn(*anyopaque, allocator: std.mem.Allocator, event_ctx: *EventCtx, resources: *Resources) error{ OutOfMemory }!void,
+getLayoutFn: *const fn(*anyopaque) ?*Layout = emptyGetLayoutFn,
 childWillDestroyFn: *const fn(*anyopaque, child: *Self) void = emptyChildWillDestroyFn,
 destroyFn: *const fn(*anyopaque, allocator: std.mem.Allocator) void,
 
@@ -159,3 +164,6 @@ pub fn insertAsPrevSib(self: *Self, region: *Self) void {
     region.parent = self.parent;
 }
 
+pub fn getLayout(self: *Self) ?*Layout {
+    return self.getLayoutFn(self.ptr);
+}

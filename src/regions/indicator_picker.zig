@@ -60,7 +60,7 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
             .ptr = @ptrCast(self),
             .drawFn = drawRegion,
             .handleEventsFn = handleEventsRegion,
-            .destroyFn = deinitRegion
+            .destroyFn = deinitRegion,
         },
         .search_select_widget = try .init(allocator, &ITEMS_MAP, &self.layout),
         .candle_chart = candle_chart,
@@ -100,7 +100,15 @@ fn addIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) !v
         0 => .{ .sma = try indicators.SMA.init(allocator, candles, DEFAULT_PERIOD) },
         1 => .{ .ema = try indicators.EMA.init(allocator, candles, DEFAULT_PERIOD) },
         2 => b: {
-            const macd_ind = try indicators.MACD.init(allocator, self.layout.screen_rect, self.candle_chart);
+            const macd_ind = try indicators.MACD.init(
+                allocator,
+                self.layout.screen_rect,
+                self.candle_chart,
+                if(self.region.getPrevSib()) |sib| (
+                    if(sib.getLayout()) |l| l
+                    else &self.candle_chart.layout
+                ) else &self.candle_chart.layout
+            );
             self.region.insertAsPrevSib(&macd_ind.region);
             break :b .{ .macd = macd_ind };
         },

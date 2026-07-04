@@ -16,8 +16,18 @@ layout: Layout,
 region: Region,
 candle_chart: *charts.CandleChart,
 view_y: MinMax,
+above_layout: *Layout,
+drag_mode: enum { none, resize, pan } = .none,
+drag_start_top: f32 = 0,
+drag_start_height: f32 = 0,
+drag_start_above_height: f32 = 0,
 
-pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, candle_chart: *charts.CandleChart) !*Self {
+pub fn init(
+    allocator: std.mem.Allocator,
+    screen_rect: *const rl.Rectangle,
+    candle_chart: *charts.CandleChart,
+    above_layout: *Layout
+) !*Self {
     const self = try allocator.create(Self);
     self.* = .{
         .macd_y_points = try allocator.alloc(f32, (candle_chart.candles.len - 26) + 1),
@@ -30,7 +40,8 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
             .destroyFn = deinitRegion
         },
         .candle_chart = candle_chart,
-        .view_y = .{ .max = 2, .min = -2 }
+        .view_y = .{ .max = 2, .min = -2 },
+        .above_layout = above_layout,
     };
 
     self.computeLayout();
@@ -235,9 +246,22 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources) !void {
     self.computeMACD();
     self.drawYAxis(resources);
-    self.drawLineChart(self.macd_y_points, .{ .r = 255, .g = 255, .b = 0, .a = 255 }, 25);
-    self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 0, .a = 255 }, 25);
     self.drawHistogram(25);
+    self.drawLineChart(self.macd_y_points, .{ .r = 255, .g = 255, .b = 0, .a = 255 }, 25);
+    self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, 25);
+
+    const is_on_divider = rl.checkCollisionPointLine(
+        rl.getMousePosition(),
+        .{ .x = self.layout.left, .y = self.layout.top },
+        .{ .x = self.layout.right(), .y = self.layout.top },
+        8
+    );
+
+    rl.drawLineEx(
+        .{ .x = self.layout.left, .y = self.layout.top },
+        .{ .x = self.layout.right(), .y = self.layout.top },
+        if(is_on_divider or self.drag_mode == .resize) 4 else 1, .blue
+    );
 
     if(rl.checkCollisionPointRec(rl.getMousePosition(), self.layout.getRect())) {
         try self.candle_chart.drawCrosshair(allocator, &self.layout, &self.view_y, resources);
@@ -245,7 +269,34 @@ pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resourc
 }
 
 fn handleEvents(self: *Self, ctx: *EventCtx) void {
+    const is_mouse_left_down = rl.isMouseButtonDown(.left);
+    if (!is_mouse_left_down) self.drag_mode = .none;
+
     if(!ctx.tryOwnMouseDown(@ptrCast(self), self.layout.getRect())) return;
+
+    const mouse = rl.getMousePosition();
+
+    if (self.drag_mode == .none and is_mouse_left_down) {
+        const is_on_divider = rl.checkCollisionPointLine(
+            mouse,
+            .{ .x = self.layout.left, .y = self.layout.top },
+            .{ .x = self.layout.right(), .y = self.layout.top },
+            8
+        );
+        self.drag_mode = if (is_on_divider) .resize else .pan;
+        self.drag_start_top = self.layout.top;
+        self.drag_start_height = self.layout.height;
+        self.drag_start_above_height = self.above_layout.height;
+    }
+
+    if (self.drag_mode == .resize) {
+        if(ctx.mouse_d) |mouse_d| {
+            self.layout.top = self.drag_start_top + mouse_d.y;
+            self.layout.height = self.drag_start_height - mouse_d.y;
+            self.above_layout.height = self.drag_start_above_height + mouse_d.y;
+        }
+        return;
+    }
 
     if (ctx.isWheelScroll() and !ctx.isHorizontalScroll() and !(rl.isKeyDown(.left_shift) or rl.isKeyDown(.left_control))) {
         const cursor_price = (self.view_y.range()) / 2 + self.view_y.min;
@@ -263,14 +314,16 @@ fn handleEvents(self: *Self, ctx: *EventCtx) void {
         return;
     }
 
-    if (ctx.mouse_d) |mouse_d| {
-        const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.height;
-        self.view_y.min = ctx.drag_start_view_y.min + mouse_d.y * price_per_pixel;
-        self.view_y.max = ctx.drag_start_view_y.max + mouse_d.y * price_per_pixel;
-        ctx.state.y_pan = 1;
-    } else if(rl.isMouseButtonDown(.left)) {
-        ctx.drag_start_view_y = self.view_y;
-        ctx.state.mouse_left_down = 1;
+    if(is_mouse_left_down) {
+        if (ctx.mouse_d) |mouse_d| {
+            const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.height;
+            self.view_y.min = ctx.drag_start_view_y.min + mouse_d.y * price_per_pixel;
+            self.view_y.max = ctx.drag_start_view_y.max + mouse_d.y * price_per_pixel;
+            ctx.state.y_pan = 1;
+        } else if(rl.isMouseButtonDown(.left)) {
+            ctx.drag_start_view_y = self.view_y;
+            ctx.state.mouse_left_down = 1;
+        }
     }
 }
 
