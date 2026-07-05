@@ -157,6 +157,10 @@ pub fn drawCandleAt(self: *Self, c: *const Candle, screen_x: f32, w: f32) void {
     rl.drawRectangleV(.{ .x = screen_x, .y = body_top }, .{ .x = w, .y = body_height }, color);
 }
 
+pub fn getClosestCandleIdx(self: *const Self, x: f32) f32 {
+    return if (self.candles.len == 0) 0 else @round(self.screenXToIndex(x));
+}
+
 pub fn drawCrosshair(
     self: *const Self,
     allocator: std.mem.Allocator,
@@ -165,6 +169,9 @@ pub fn drawCrosshair(
     resources: *const Resources,
 ) !void {
     const mouse = rl.getMousePosition();
+
+    const snapped_index = self.getClosestCandleIdx(mouse.x);
+    const snapped_x = self.indexToScreenX(snapped_index);
 
     rl.beginScissorMode(
         @intFromFloat(layout.screen_rect.x),
@@ -181,8 +188,8 @@ pub fn drawCrosshair(
         );
 
         rl.drawLineDashed(
-            .{ .x = mouse.x, .y = layout.screen_rect.y },
-            .{ .x = mouse.x, .y = layout.screen_rect.height },
+            .{ .x = snapped_x, .y = layout.screen_rect.y },
+            .{ .x = snapped_x, .y = layout.screen_rect.height },
             dash_size, space_size, CROSSHAIR_COLOR
         );
     } rl.endScissorMode();
@@ -204,7 +211,7 @@ pub fn drawCrosshair(
 
     buf = undefined;
     
-    const ts = self.indexToTs(self.screenXToIndex(mouse.x));
+    const ts = self.indexToTs(snapped_index);
     const epoch_seconds = @divFloor(ts, 1000);
     const shows_time = self.timeframe.showsTime();
 
@@ -219,7 +226,7 @@ pub fn drawCrosshair(
     defer allocator.free(time_text);
 
     const text_size = rl.measureTextEx(resources.font, time_text, PRICE_FONT_SIZE, 1);
-    label_x = mouse.x - text_size.x / 2.0;
+    label_x = snapped_x - text_size.x / 2.0;
 
     rl.drawRectangleV(
         .{ .x = label_x - pad, .y = label_y - pad },

@@ -123,8 +123,8 @@ fn drawBand(self: *const Self, offset_idx: usize, color: rl.Color) void {
 }
 
 pub fn draw(self: *const Self) void {
-    self.drawBand(PERIOD - 1, .{ .r = 0, .g = 120, .b = 255, .a = 40 });
+    self.drawBand(PERIOD - 1, .{ .r = 0, .g = 120, .b = 255, .a = 30 });
     self.drawLine(self.sma, PERIOD - 1, .white);
-    self.drawLine(self.upper, PERIOD - 1, .blue);
+    self.drawLine(self.upper, PERIOD - 1, .purple);
     self.drawLine(self.lower, PERIOD - 1, .blue);
 }
