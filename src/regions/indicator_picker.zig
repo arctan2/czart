@@ -17,6 +17,7 @@ const DEFAULT_PERIOD = 20;
 var ITEMS_MAP = [_]widgets.SearchSelect.Item{
     .{ .name = "SMA", .is_selected = false },
     .{ .name = "EMA", .is_selected = false },
+    .{ .name = "Bollinger Bands", .is_selected = false },
     .{ .name = "Moving average convergence divergence", .is_selected = false },
 };
 
@@ -25,13 +26,15 @@ const ActiveIndicator = struct {
     impl: union(enum) {
         sma: indicators.SMA,
         ema: indicators.EMA,
-        macd: *indicators.MACD
+        bollinger_bands: indicators.BollingerBands,
+        macd: *indicators.MACD,
     },
 
     fn deinit(self: *ActiveIndicator, allocator: std.mem.Allocator) void {
         switch (self.impl) {
             .sma => |*s| s.deinit(allocator),
             .ema => |*e| e.deinit(allocator),
+            .bollinger_bands => |*b| b.deinit(allocator),
             .macd => |m| m.region.destroy(allocator),
         }
     }
@@ -40,6 +43,7 @@ const ActiveIndicator = struct {
         switch (self.impl) {
             .sma => |*s| s.draw(chart),
             .ema => |*e| e.draw(chart),
+            .bollinger_bands => |*b| b.draw(chart),
             .macd => {},
         }
     }
@@ -99,7 +103,8 @@ fn addIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) !v
     const impl: @FieldType(ActiveIndicator, "impl") = switch (item_index) {
         0 => .{ .sma = try indicators.SMA.init(allocator, candles, DEFAULT_PERIOD) },
         1 => .{ .ema = try indicators.EMA.init(allocator, candles, DEFAULT_PERIOD) },
-        2 => b: {
+        2 => .{ .bollinger_bands = try indicators.BollingerBands.init(allocator, candles) },
+        3 => b: {
             const macd_ind = try indicators.MACD.init(
                 allocator,
                 self.layout.screen_rect,
