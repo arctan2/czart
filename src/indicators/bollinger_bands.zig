@@ -67,7 +67,7 @@ fn calcBands(self: *const Self) void {
     }
 }
 
-fn drawLine(self: *const Self, points: []f32, start_idx: usize, color: rl.Color) void {
+fn drawLine(self: *const Self, points: []f32, offset_idx: usize, color: rl.Color) void {
     std.debug.assert(points.len > 1);
 
     rl.beginScissorMode(
@@ -78,23 +78,52 @@ fn drawLine(self: *const Self, points: []f32, start_idx: usize, color: rl.Color)
     );
     defer rl.endScissorMode();
 
-    const points_with_offset = points[start_idx..];
-
-    var i, const end = self.candle_chart.viewXCulling(start_idx, points_with_offset.len);
+    var i, const end = self.candle_chart.viewXCulling(offset_idx, points.len);
 
     while (i < end) : (i += 1) {
-        const y_start = self.candle_chart.viewToScreenY(points_with_offset[i]);
-        const y_end = self.candle_chart.viewToScreenY(points_with_offset[i + 1]);
+        const y_start = self.candle_chart.viewToScreenY(points[i]);
+        const y_end = self.candle_chart.viewToScreenY(points[i + 1]);
         rl.drawLineEx(
-            .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + start_idx)), .y = y_start },
-            .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + 1 + start_idx)), .y = y_end },
+            .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + offset_idx)), .y = y_start },
+            .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + 1 + offset_idx)), .y = y_end },
             1.2,
             color
         );
     }
 }
 
+fn drawBand(self: *const Self, offset_idx: usize, color: rl.Color) void {
+    std.debug.assert(self.upper.len > 1);
+
+    rl.beginScissorMode(
+        @intFromFloat(self.candle_chart.layout.left),
+        @intFromFloat(self.candle_chart.layout.top),
+        @intFromFloat(self.candle_chart.layout.width),
+        @intFromFloat(self.candle_chart.layout.height),
+    );
+    defer rl.endScissorMode();
+
+    const upper = self.upper;
+    const lower = self.lower;
+
+    var i, const end = self.candle_chart.viewXCulling(offset_idx, upper.len);
+
+    while (i < end) : (i += 1) {
+        const x0 = self.candle_chart.indexToScreenX(@floatFromInt(i + offset_idx));
+        const x1 = self.candle_chart.indexToScreenX(@floatFromInt(i + 1 + offset_idx));
+
+        const tl = rl.Vector2{ .x = x0, .y = self.candle_chart.viewToScreenY(upper[i]) };
+        const tr = rl.Vector2{ .x = x1, .y = self.candle_chart.viewToScreenY(upper[i + 1]) };
+        const bl = rl.Vector2{ .x = x0, .y = self.candle_chart.viewToScreenY(lower[i]) };
+        const br = rl.Vector2{ .x = x1, .y = self.candle_chart.viewToScreenY(lower[i + 1]) };
+
+        rl.drawTriangle(tl, bl, br, color);
+        rl.drawTriangle(tl, br, tr, color);
+    }
+}
+
 pub fn draw(self: *const Self) void {
+    self.drawBand(PERIOD - 1, .{ .r = 0, .g = 120, .b = 255, .a = 40 });
     self.drawLine(self.sma, PERIOD - 1, .white);
     self.drawLine(self.upper, PERIOD - 1, .blue);
     self.drawLine(self.lower, PERIOD - 1, .blue);

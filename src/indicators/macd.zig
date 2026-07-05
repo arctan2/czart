@@ -31,7 +31,7 @@ pub fn init(
     const self = try allocator.create(Self);
     self.* = .{
         .macd_y_points = try allocator.alloc(f32, (candle_chart.candles.len - 26) + 1),
-        .signal_y_points = try allocator.alloc(f32, (candle_chart.candles.len - 26) + 1),
+        .signal_y_points = try allocator.alloc(f32, (candle_chart.candles.len - 35) + 1),
         .layout = .empty(screen_rect),
         .region = .{
             .ptr = @ptrCast(self),
@@ -71,9 +71,9 @@ fn computeMinMaxY(self: *Self) void {
     var min: f32 = std.math.inf(f32);
     var max: f32 = 0;
 
-    for(0..self.macd_y_points.len) |i| {
-        min = @min(min, self.macd_y_points[i], self.signal_y_points[i]);
-        max = @max(max, self.macd_y_points[i], self.signal_y_points[i]);
+    for(0..self.signal_y_points.len) |i| {
+        min = @min(min, self.macd_y_points[i + 9], self.signal_y_points[i]);
+        max = @max(max, self.macd_y_points[i + 9], self.signal_y_points[i]);
     }
 
     self.view_y.max = max;
@@ -120,10 +120,8 @@ fn computeMACD(self: *const Self) void {
 
         const diff_ema_12_26 = ema_12 - ema_26;
 
-        self.macd_y_points[(i - 26) + 1] = diff_ema_12_26;
+        self.macd_y_points[i - 26] = diff_ema_12_26;
     }
-
-    for(0..26) |i| self.macd_y_points[i] = self.macd_y_points[26];
 
     var sum: f32 = 0;
 
@@ -133,7 +131,7 @@ fn computeMACD(self: *const Self) void {
 
     self.signal_y_points[0] = sum / 9.0;
 
-    for (9..self.macd_y_points.len) |i| {
+    for (9..(self.macd_y_points.len - 9)) |i| {
         sum += self.macd_y_points[i];
         sum -= self.macd_y_points[i - 9];
         self.signal_y_points[(i - 9) + 1] = sum / 9.0;
@@ -200,13 +198,11 @@ fn drawLineChart(self: *Self, points: []f32, color: rl.Color, start_idx: usize) 
     );
     defer rl.endScissorMode();
 
-    const points_with_offset = points[start_idx..];
-
-    var i, const end = self.candle_chart.viewXCulling(start_idx, points_with_offset.len);
+    var i, const end = self.candle_chart.viewXCulling(start_idx, points.len);
 
     while(i < end) : (i += 1) {
-        const y_start = self.toScreenY(points_with_offset[i]);
-        const y_end = self.toScreenY(points_with_offset[i + 1]);
+        const y_start = self.toScreenY(points[i]);
+        const y_end = self.toScreenY(points[i + 1]);
         rl.drawLineEx(
             .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + start_idx)), .y = y_start },
             .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + 1 + start_idx)), .y = y_end },
@@ -218,7 +214,7 @@ fn drawLineChart(self: *Self, points: []f32, color: rl.Color, start_idx: usize) 
 
 fn drawHistogram(self: *Self, start_idx: usize) void {
     std.debug.assert(self.macd_y_points.len > 1);
-    std.debug.assert(self.macd_y_points.len == self.signal_y_points.len);
+    std.debug.assert(self.macd_y_points.len == self.signal_y_points.len + 9);
 
     rl.beginScissorMode(
         @intFromFloat(self.layout.left),
@@ -228,10 +224,10 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
     );
     defer rl.endScissorMode();
 
-    const macd_y_points = self.macd_y_points[start_idx..];
-    const signal_y_points = self.signal_y_points[start_idx..];
+    const macd_y_points = self.macd_y_points[8..];
+    const signal_y_points = self.signal_y_points;
 
-    var i, const end = self.candle_chart.viewXCulling(start_idx, macd_y_points.len);
+    var i, const end = self.candle_chart.viewXCulling(start_idx, signal_y_points.len);
     const slot_px = self.layout.width / self.candle_chart.view.x.range();
     const w = slot_px * 0.8;
     const zero_screen_y = self.toScreenY(0.0);
@@ -256,11 +252,10 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources) !void {
-    self.computeMACD();
     self.drawYAxis(resources);
-    self.drawHistogram(25);
-    self.drawLineChart(self.macd_y_points, .{ .r = 255, .g = 255, .b = 0, .a = 255 }, 25);
-    self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, 25);
+    self.drawHistogram(34);
+    self.drawLineChart(self.macd_y_points[9..], .{ .r = 255, .g = 255, .b = 0, .a = 255 }, 34);
+    self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, 34);
 
     const is_on_divider = rl.checkCollisionPointLine(
         rl.getMousePosition(),

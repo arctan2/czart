@@ -128,7 +128,9 @@ pub fn drawCandles(self: *Self) void {
     const slot_px = self.layout.width / self.view.x.range();
     const w = slot_px * 0.8;
 
-    for (self.candles, 0..self.candles.len) |*c, i| {
+    const start, const end = self.viewXCulling(0, self.candles.len);
+
+    for (self.candles[start..end + 1], start..) |*c, i| {
         const idx: f32 = @floatFromInt(i);
         const sx = self.indexToScreenX(idx) - w / 2.0;
 
