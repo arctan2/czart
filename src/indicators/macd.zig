@@ -84,6 +84,11 @@ pub fn toScreenY(self: *const Self, p: f32) f32 {
     return (self.layout.height * (1.0 - t)) + self.layout.top;
 }
 
+pub fn toViewY(self: *Self, y: f32) f32 {
+    const t = 1.0 - ((y - self.layout.top) / self.layout.height);
+    return self.view_y.min + t * self.view_y.range();
+}
+
 fn computeMACD(self: *const Self) void {
     if (self.candle_chart.candles.len < 26) return;
 
@@ -252,8 +257,8 @@ pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resourc
 
     const is_on_divider = rl.checkCollisionPointLine(
         rl.getMousePosition(),
-        .{ .x = self.layout.left, .y = self.layout.top },
-        .{ .x = self.layout.right(), .y = self.layout.top },
+        .{ .x = self.layout.left, .y = self.layout.top + 4 },
+        .{ .x = self.layout.right(), .y = self.layout.top + 4 },
         8
     );
 
@@ -299,7 +304,7 @@ fn handleEvents(self: *Self, ctx: *EventCtx) void {
     }
 
     if (ctx.isWheelScroll() and !ctx.isHorizontalScroll() and !(rl.isKeyDown(.left_shift) or rl.isKeyDown(.left_control))) {
-        const cursor_price = (self.view_y.range()) / 2 + self.view_y.min;
+        const cursor_price = self.toViewY(mouse.y);
         const factor: f32 = 1 + if (ctx.wheel_d.y > 0) -ctx.zoom_sensitivity else ctx.zoom_sensitivity;
 
         const new_min = cursor_price + (self.view_y.min - cursor_price) * factor;

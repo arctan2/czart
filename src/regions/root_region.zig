@@ -65,9 +65,10 @@ fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void 
 }
 
 fn scroll(self: *Self, ctx: *Region.EventCtx, change_time_axis: bool) void {
-    const mid_x = self.layout.right() / 2;
-    const cursor_index = self.candle_chart.screenXToIndex(mid_x);
+    const mouse = rl.getMousePosition();
+
     if (change_time_axis) {
+        const cursor_index = self.candle_chart.screenXToIndex(mouse.x);
         const factor: f32 = 1 + if (ctx.wheel_d.y > 0) -ctx.zoom_sensitivity else ctx.zoom_sensitivity;
         const new_min = cursor_index + (self.candle_chart.view.x.min - cursor_index) * factor;
         const new_max = cursor_index + (self.candle_chart.view.x.max - cursor_index) * factor;
@@ -79,7 +80,7 @@ fn scroll(self: *Self, ctx: *Region.EventCtx, change_time_axis: bool) void {
             self.candle_chart.view.x.max = new_max;
         }
     } else {
-        const cursor_price = (self.candle_chart.view.y.range()) / 2 + self.candle_chart.view.y.min;
+        const cursor_price = charts.CandleChart.screenToViewY(self.layout, &self.candle_chart.view.y, mouse.y);
         const factor: f32 = 1 + if (ctx.wheel_d.y > 0) -ctx.zoom_sensitivity else ctx.zoom_sensitivity;
 
         const new_min = cursor_price + (self.candle_chart.view.y.min - cursor_price) * factor;

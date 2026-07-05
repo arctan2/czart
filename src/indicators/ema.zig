@@ -33,7 +33,7 @@ fn computeEMA(self: *const Self, chart: *const charts.CandleChart) void {
 
     self.points[0] = .{
         .x = chart.indexToScreenX(@floatFromInt(self.period - 1)),
-        .y = chart.priceToScreenY(prev_ema),
+        .y = chart.viewToScreenY(prev_ema),
     };
 
     const M: f32 = 2.0 / @as(f32, @floatFromInt(self.period + 1));
@@ -45,7 +45,7 @@ fn computeEMA(self: *const Self, chart: *const charts.CandleChart) void {
 
         self.points[i - self.period + 1] = .{
             .x = chart.indexToScreenX(@floatFromInt(i)),
-            .y = chart.priceToScreenY(ema),
+            .y = chart.viewToScreenY(ema),
         };
     }
 }

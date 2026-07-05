@@ -78,12 +78,12 @@ pub fn screenXToIndex(self: *const Self, sx: f32) f32 {
     return self.view.x.min + t * self.view.x.range();
 }
 
-pub fn priceToScreenY(self: *const Self, price: f32) f32 {
-    const t = (price - self.view.y.min) / self.view.y.range();
+pub fn viewToScreenY(self: *const Self, y: f32) f32 {
+    const t = (y - self.view.y.min) / self.view.y.range();
     return (self.layout.height * (1.0 - t)) + self.layout.top;
 }
 
-pub fn screenYToPrice(layout: *const Layout, view_y: *const MinMax, y: f32) f32 {
+pub fn screenToViewY(layout: *const Layout, view_y: *const MinMax, y: f32) f32 {
     const t = 1.0 - ((y - layout.top) / layout.height);
     return view_y.min + t * view_y.range();
 }
@@ -128,10 +128,10 @@ pub fn drawCandles(self: *Self) void {
 }
 
 pub fn drawCandleAt(self: *Self, c: *const Candle, screen_x: f32, w: f32) void {
-    const open_y = self.priceToScreenY(c.open);
-    const close_y = self.priceToScreenY(c.close);
-    const high_y = self.priceToScreenY(c.high);
-    const low_y = self.priceToScreenY(c.low);
+    const open_y = self.viewToScreenY(c.open);
+    const close_y = self.viewToScreenY(c.close);
+    const high_y = self.viewToScreenY(c.high);
+    const low_y = self.viewToScreenY(c.low);
 
     const body_top = @min(open_y, close_y);
     const body_height = @max(@abs(open_y - close_y), 1.0);
@@ -174,7 +174,7 @@ pub fn drawCrosshair(
     } rl.endScissorMode();
 
     var buf: [24]u8 = undefined;
-    const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{screenYToPrice(layout, view_y, mouse.y)}) catch @panic("unable to convert float -> string");
+    const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{screenToViewY(layout, view_y, mouse.y)}) catch @panic("unable to convert float -> string");
 
     var label_x = layout.right() + 8.0;
     var label_y = mouse.y - PRICE_FONT_SIZE / 2.0;
@@ -239,7 +239,7 @@ pub fn drawYAxis(self: *Self, resources: *const Resources) void {
 
     var price = first;
     while (price <= self.view.y.max) : (price += interval) {
-        const sy = self.priceToScreenY(price);
+        const sy = self.viewToScreenY(price);
         const screen_y = sy;
 
         rl.drawLineEx(

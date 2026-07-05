@@ -31,7 +31,7 @@ fn computeSMA(self: *const Self, chart: *const charts.CandleChart) void {
 
     self.points[0] = .{
         .x = chart.indexToScreenX(@floatFromInt(self.period - 1)),
-        .y = chart.priceToScreenY(sum / @as(f32, @floatFromInt(self.period))),
+        .y = chart.viewToScreenY(sum / @as(f32, @floatFromInt(self.period))),
     };
 
     for (self.period..candles.len) |i| {
@@ -40,7 +40,7 @@ fn computeSMA(self: *const Self, chart: *const charts.CandleChart) void {
 
         self.points[i - self.period + 1] = .{
             .x = chart.indexToScreenX(@floatFromInt(i)),
-            .y = chart.priceToScreenY(sum / @as(f32, @floatFromInt(self.period))),
+            .y = chart.viewToScreenY(sum / @as(f32, @floatFromInt(self.period))),
         };
     }
 }
