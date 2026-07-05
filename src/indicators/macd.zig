@@ -61,6 +61,7 @@ fn computeLayout(self: *Self) void {
 }
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+    self.above_layout.height += self.layout.height;
     allocator.free(self.macd_y_points);
     allocator.free(self.signal_y_points);
     allocator.destroy(self);
@@ -199,10 +200,13 @@ fn drawLineChart(self: *Self, points: []f32, color: rl.Color, start_idx: usize) 
     );
     defer rl.endScissorMode();
 
-    var i: usize = start_idx;
-    while(i < points.len - 1) : (i += 1) {
-        const y_start = self.toScreenY(points[i]);
-        const y_end = self.toScreenY(points[i + 1]);
+    const points_with_offset = points[start_idx..];
+
+    var i, const end = self.candle_chart.viewXCulling(start_idx, points_with_offset.len);
+
+    while(i < end) : (i += 1) {
+        const y_start = self.toScreenY(points_with_offset[i]);
+        const y_end = self.toScreenY(points_with_offset[i + 1]);
         rl.drawLineEx(
             .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + start_idx)), .y = y_start },
             .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + 1 + start_idx)), .y = y_end },
@@ -224,13 +228,16 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
     );
     defer rl.endScissorMode();
 
-    var i: usize = start_idx;
+    const macd_y_points = self.macd_y_points[start_idx..];
+    const signal_y_points = self.signal_y_points[start_idx..];
+
+    var i, const end = self.candle_chart.viewXCulling(start_idx, macd_y_points.len);
     const slot_px = self.layout.width / self.candle_chart.view.x.range();
     const w = slot_px * 0.8;
     const zero_screen_y = self.toScreenY(0.0);
 
-    while(i < self.macd_y_points.len) : (i += 1) {
-        const diff = self.macd_y_points[i] - self.signal_y_points[i];
+    while(i < end) : (i += 1) {
+        const diff = macd_y_points[i] - signal_y_points[i];
 
         const idx: f32 = @floatFromInt(i + start_idx);
         const sx = self.candle_chart.indexToScreenX(idx) - w / 2.0;

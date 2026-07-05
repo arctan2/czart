@@ -67,6 +67,18 @@ pub fn calcMinMax(candles: []Candle) View {
     return .{ .y = y, .x = x };
 }
 
+pub fn viewXCulling(self: *const Self, min: usize, max: usize) struct{usize, usize} {
+    const view_x = self.view.x;
+    const min_f = view_x.min - @as(f32, @floatFromInt(min)) - 1.0;
+    const max_f = view_x.max - @as(f32, @floatFromInt(min)) + 1.0;
+
+    const last_seg = max - 1;
+    const start = if (min_f <= 0) 0 else @min(@as(usize, @intFromFloat(min_f)), last_seg);
+    const end = if (max_f <= 0) 0 else @min(@as(usize, @intFromFloat(max_f)), last_seg);
+
+    return .{ start, end };
+}
+
 pub fn indexToScreenX(self: *const Self, index: f32) f32 {
     const range = self.view.x.range();
     const t = (index - self.view.x.min) / range;

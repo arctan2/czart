@@ -9,13 +9,16 @@ const PERIOD = 20;
 sma: []f32,
 upper: []f32,
 lower: []f32,
+candle_chart: *const charts.CandleChart,
 
-pub fn init(allocator: std.mem.Allocator, candles: []charts.CandleChart.Candle) !Self {
+pub fn init(allocator: std.mem.Allocator, candle_chart: *const charts.CandleChart) !Self {
     const self = Self{
-        .sma = try allocator.alloc(f32, candles.len - PERIOD + 1),
-        .upper = try allocator.alloc(f32, candles.len - PERIOD + 1),
-        .lower = try allocator.alloc(f32, candles.len - PERIOD + 1),
+        .sma = try allocator.alloc(f32, candle_chart.candles.len - PERIOD + 1),
+        .upper = try allocator.alloc(f32, candle_chart.candles.len - PERIOD + 1),
+        .lower = try allocator.alloc(f32, candle_chart.candles.len - PERIOD + 1),
+        .candle_chart = candle_chart
     };
+    self.calcBands();
     return self;
 }
 
@@ -25,8 +28,8 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.free(self.lower);
 }
 
-fn calcBands(self: *const Self, chart: *const charts.CandleChart) void {
-    const candles = chart.candles;
+fn calcBands(self: *const Self) void {
+    const candles = self.candle_chart.candles;
     if (candles.len < PERIOD) return;
 
     var sum: f64 = 0;
@@ -64,33 +67,35 @@ fn calcBands(self: *const Self, chart: *const charts.CandleChart) void {
     }
 }
 
-fn drawLine(candle_chart: *const charts.CandleChart, points: []f32, start_idx: usize, color: rl.Color) void {
+fn drawLine(self: *const Self, points: []f32, start_idx: usize, color: rl.Color) void {
     std.debug.assert(points.len > 1);
 
     rl.beginScissorMode(
-        @intFromFloat(candle_chart.layout.left),
-        @intFromFloat(candle_chart.layout.top),
-        @intFromFloat(candle_chart.layout.width),
-        @intFromFloat(candle_chart.layout.height),
+        @intFromFloat(self.candle_chart.layout.left),
+        @intFromFloat(self.candle_chart.layout.top),
+        @intFromFloat(self.candle_chart.layout.width),
+        @intFromFloat(self.candle_chart.layout.height),
     );
     defer rl.endScissorMode();
 
-    var i: usize = 0;
-    while(i < points.len - 1) : (i += 1) {
-        const y_start = candle_chart.viewToScreenY(points[i]);
-        const y_end = candle_chart.viewToScreenY(points[i + 1]);
+    const points_with_offset = points[start_idx..];
+
+    var i, const end = self.candle_chart.viewXCulling(start_idx, points_with_offset.len);
+
+    while (i < end) : (i += 1) {
+        const y_start = self.candle_chart.viewToScreenY(points_with_offset[i]);
+        const y_end = self.candle_chart.viewToScreenY(points_with_offset[i + 1]);
         rl.drawLineEx(
-            .{ .x = candle_chart.indexToScreenX(@floatFromInt(i + start_idx)), .y = y_start },
-            .{ .x = candle_chart.indexToScreenX(@floatFromInt(i + 1 + start_idx)), .y = y_end },
+            .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + start_idx)), .y = y_start },
+            .{ .x = self.candle_chart.indexToScreenX(@floatFromInt(i + 1 + start_idx)), .y = y_end },
             1.2,
             color
         );
     }
 }
 
-pub fn draw(self: *const Self, chart: *const charts.CandleChart) void {
-    self.calcBands(chart);
-    drawLine(chart, self.sma, PERIOD - 1, .white);
-    drawLine(chart, self.upper, PERIOD - 1, .blue);
-    drawLine(chart, self.lower, PERIOD - 1, .blue);
+pub fn draw(self: *const Self) void {
+    self.drawLine(self.sma, PERIOD - 1, .white);
+    self.drawLine(self.upper, PERIOD - 1, .blue);
+    self.drawLine(self.lower, PERIOD - 1, .blue);
 }

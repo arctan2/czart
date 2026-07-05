@@ -43,7 +43,7 @@ const ActiveIndicator = struct {
         switch (self.impl) {
             .sma => |*s| s.draw(chart),
             .ema => |*e| e.draw(chart),
-            .bollinger_bands => |*b| b.draw(chart),
+            .bollinger_bands => |*b| b.draw(),
             .macd => {},
         }
     }
@@ -103,7 +103,7 @@ fn addIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) !v
     const impl: @FieldType(ActiveIndicator, "impl") = switch (item_index) {
         0 => .{ .sma = try indicators.SMA.init(allocator, candles, DEFAULT_PERIOD) },
         1 => .{ .ema = try indicators.EMA.init(allocator, candles, DEFAULT_PERIOD) },
-        2 => .{ .bollinger_bands = try indicators.BollingerBands.init(allocator, candles) },
+        2 => .{ .bollinger_bands = try indicators.BollingerBands.init(allocator, self.candle_chart) },
         3 => b: {
             const macd_ind = try indicators.MACD.init(
                 allocator,
