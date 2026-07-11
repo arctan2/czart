@@ -9,6 +9,10 @@ const EventCtx = Region.EventCtx;
 const MinMax = common.MinMax;
 
 const Self = @This();
+const DEFAULT_FAST_LEN: usize = 12;
+const DEFAULT_SLOW_LEN: usize = 26;
+const DEFAULT_SIGNAL_LEN: usize = 9;
+const KEY_SENSITIVITY = 0.2;
 
 macd_y_points: []f32,
 signal_y_points: []f32,
@@ -22,6 +26,13 @@ drag_start_top: f32 = 0,
 drag_start_height: f32 = 0,
 drag_start_above_height: f32 = 0,
 
+slow_len: usize = DEFAULT_SLOW_LEN,
+fast_len: usize = DEFAULT_FAST_LEN,
+signal_len: usize = DEFAULT_SIGNAL_LEN,
+
+cur_edit_idx: usize = 0,
+last_key_down_time: f32 = 0,
+
 pub fn init(
     allocator: std.mem.Allocator,
     screen_rect: *const rl.Rectangle,
@@ -30,8 +41,8 @@ pub fn init(
 ) !*Self {
     const self = try allocator.create(Self);
     self.* = .{
-        .macd_y_points = try allocator.alloc(f32, (candle_chart.candles.len - 26) + 1),
-        .signal_y_points = try allocator.alloc(f32, (candle_chart.candles.len - 35) + 1),
+        .macd_y_points = try allocator.alloc(f32, (candle_chart.candles.len - DEFAULT_SLOW_LEN) + 1),
+        .signal_y_points = try allocator.alloc(f32, (candle_chart.candles.len - (DEFAULT_SLOW_LEN + DEFAULT_SIGNAL_LEN)) + 1),
         .layout = .empty(screen_rect),
         .region = .{
             .ptr = @ptrCast(self),
@@ -42,6 +53,9 @@ pub fn init(
         .candle_chart = candle_chart,
         .view_y = .{ .max = 2, .min = -2 },
         .above_layout = above_layout,
+        .slow_len = DEFAULT_SLOW_LEN,
+        .fast_len = DEFAULT_FAST_LEN,
+        .signal_len = DEFAULT_SIGNAL_LEN,
     };
 
     self.computeLayout();
@@ -72,8 +86,8 @@ fn computeMinMaxY(self: *Self) void {
     var max: f32 = 0;
 
     for(0..self.signal_y_points.len) |i| {
-        min = @min(min, self.macd_y_points[i + 9], self.signal_y_points[i]);
-        max = @max(max, self.macd_y_points[i + 9], self.signal_y_points[i]);
+        min = @min(min, self.macd_y_points[i + self.signal_len], self.signal_y_points[i]);
+        max = @max(max, self.macd_y_points[i + self.signal_len], self.signal_y_points[i]);
     }
 
     self.view_y.max = max;
@@ -90,51 +104,58 @@ pub fn toViewY(self: *Self, y: f32) f32 {
     return self.view_y.min + t * self.view_y.range();
 }
 
+pub fn reallocBuffers(self: *Self, allocator: std.mem.Allocator) !void {
+    allocator.free(self.macd_y_points);
+    allocator.free(self.signal_y_points);
+    self.macd_y_points = try allocator.alloc(f32, (self.candle_chart.candles.len - self.slow_len) + 1);
+    self.signal_y_points = try allocator.alloc(f32, (self.candle_chart.candles.len - (self.slow_len + self.signal_len)) + 1);
+}
+
 fn computeMACD(self: *const Self) void {
-    if (self.candle_chart.candles.len < 26) return;
+    if (self.candle_chart.candles.len < self.slow_len) return;
 
-    var sum_12: f32 = 0;
-    var sum_26: f32 = 0;
+    var sum_fast: f32 = 0;
+    var sum_slow: f32 = 0;
 
-    for (self.candle_chart.candles[12..24]) |candle| sum_12 += candle.close;
-    for (self.candle_chart.candles[0..26]) |candle| sum_26 += candle.close;
+    for (self.candle_chart.candles[self.fast_len..(self.fast_len * 2)]) |candle| sum_fast += candle.close;
+    for (self.candle_chart.candles[0..self.slow_len]) |candle| sum_slow += candle.close;
 
-    var prev_ema_12 = sum_12 / 12.0;
-    var prev_ema_26 = sum_26 / 26.0;
+    var prev_ema_fast = sum_fast / @as(f32, @floatFromInt(self.fast_len));
+    var prev_ema_slow = sum_slow / @as(f32, @floatFromInt(self.slow_len));
 
-    const M12: f32 = 2.0 / 13.0;
-    const M26: f32 = 2.0 / 27.0;
+    const M_FAST: f32 = 2.0 / @as(f32, @floatFromInt(self.fast_len + 1));
+    const M_SLOW: f32 = 2.0 / @as(f32, @floatFromInt(self.slow_len + 1));
 
-    for (12..26) |i| {
+    for (self.fast_len..self.slow_len) |i| {
         const candle = self.candle_chart.candles[i];
-        const ema_12 = (candle.close * M12) + (prev_ema_12 * (1 - M12));
-        prev_ema_12 = ema_12;
+        const ema_fast = (candle.close * M_FAST) + (prev_ema_fast * (1 - M_FAST));
+        prev_ema_fast = ema_fast;
     }
 
-    for (26..self.candle_chart.candles.len) |i| {
+    for (self.slow_len..self.candle_chart.candles.len) |i| {
         const candle = self.candle_chart.candles[i];
-        const ema_12 = (candle.close * M12) + (prev_ema_12 * (1 - M12));
-        const ema_26 = (candle.close * M26) + (prev_ema_26 * (1 - M26));
-        prev_ema_12 = ema_12;
-        prev_ema_26 = ema_26;
+        const ema_fast = (candle.close * M_FAST) + (prev_ema_fast * (1 - M_FAST));
+        const ema_slow = (candle.close * M_SLOW) + (prev_ema_slow * (1 - M_SLOW));
+        prev_ema_fast = ema_fast;
+        prev_ema_slow = ema_slow;
 
-        const diff_ema_12_26 = ema_12 - ema_26;
+        const diff_ema_fast_26 = ema_fast - ema_slow;
 
-        self.macd_y_points[i - 26] = diff_ema_12_26;
+        self.macd_y_points[i - self.slow_len] = diff_ema_fast_26;
     }
 
     var sum: f32 = 0;
 
-    for (self.macd_y_points[0..9]) |p| {
+    for (self.macd_y_points[0..self.signal_len]) |p| {
         sum += p;
     }
 
-    self.signal_y_points[0] = sum / 9.0;
+    self.signal_y_points[0] = sum / @as(f32, @floatFromInt(self.signal_len));
 
-    for (9..(self.macd_y_points.len - 9)) |i| {
+    for (self.signal_len..(self.macd_y_points.len - self.signal_len)) |i| {
         sum += self.macd_y_points[i];
-        sum -= self.macd_y_points[i - 9];
-        self.signal_y_points[(i - 9) + 1] = sum / 9.0;
+        sum -= self.macd_y_points[i - self.signal_len];
+        self.signal_y_points[(i - self.signal_len) + 1] = sum / @as(f32, @floatFromInt(self.signal_len));
     }
 }
 
@@ -214,7 +235,7 @@ fn drawLineChart(self: *Self, points: []f32, color: rl.Color, start_idx: usize) 
 
 fn drawHistogram(self: *Self, start_idx: usize) void {
     std.debug.assert(self.macd_y_points.len > 1);
-    std.debug.assert(self.macd_y_points.len == self.signal_y_points.len + 9);
+    std.debug.assert(self.macd_y_points.len == self.signal_y_points.len + self.signal_len);
 
     rl.beginScissorMode(
         @intFromFloat(self.layout.left),
@@ -232,6 +253,8 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
     const w = slot_px * 0.8;
     const zero_screen_y = self.toScreenY(0.0);
 
+    var prev_diff: ?f32 = null;
+
     while(i < end) : (i += 1) {
         const diff = macd_y_points[i] - signal_y_points[i];
 
@@ -245,17 +268,69 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
 
         const body_top = @min(zero_screen_y, val_screen_y);
         const body_height = @abs(zero_screen_y - val_screen_y);
-        const c = if (diff > 0) rl.Color.green else rl.Color.red;
+
+        var c = if (diff > 0) rl.Color.green else rl.Color.red;
+
+        if(prev_diff) |p| {
+            if(@abs(diff) < @abs(p)) {
+                c.r -|= 100;
+                c.g -|= 100;
+                c.b -|= 100;
+            }
+        }
+
+        prev_diff = diff;
 
         rl.drawRectangleV(.{ .x = sx, .y = body_top }, .{ .x = w, .y = body_height }, c);
     }
 }
 
+pub fn drawTitle(self: *Self, allocator: std.mem.Allocator, resources: *const Resources) !void {
+    const pad = 10;
+    const font_size: f32 = 16;
+    const top = self.layout.top + pad;
+    const left = self.layout.left + pad;
+    const param_start = resources.measureText("MACD(", font_size, 1);
+    const text = try std.fmt.allocPrintSentinel(allocator, "MACD({d}, {d}, {d})", .{self.fast_len, self.slow_len, self.signal_len}, 0);
+    defer allocator.free(text);
+    rl.drawTextEx(resources.font, text, .{ .x = left, .y = top }, font_size, 1, .white);
+
+    const fast_len_text = try std.fmt.allocPrintSentinel(allocator, "{d}, ", .{self.fast_len}, 0);
+    defer allocator.free(fast_len_text);
+
+    const slow_len_text = try std.fmt.allocPrintSentinel(allocator, "{d}, ", .{self.slow_len}, 0);
+    defer allocator.free(slow_len_text);
+
+    const signal_len_text = try std.fmt.allocPrintSentinel(allocator, "{d}, ", .{self.signal_len}, 0);
+    defer allocator.free(signal_len_text);
+
+    const w = switch(self.cur_edit_idx) {
+        0 => resources.measureText(fast_len_text, font_size, 1).x,
+        1 => resources.measureText(slow_len_text, font_size, 1).x,
+        2 => resources.measureText(signal_len_text, font_size, 1).x,
+        else => 0
+    };
+
+    const x = switch(self.cur_edit_idx) {
+        1 => resources.measureText(fast_len_text, font_size, 1).x,
+        2 => resources.measureText(fast_len_text, font_size, 1).x + resources.measureText(slow_len_text, font_size, 1).x,
+        else => 0
+    };
+
+    rl.drawRectangleV(
+        .{ .x = left + param_start.x + x, .y = top },
+        .{ .x = w, .y = param_start.y },
+        .{ .r = 255, .g = 255, .b = 255, .a = 100 }
+    );
+}
+
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources) !void {
+    const offset = self.signal_len + self.slow_len - 1;
     self.drawYAxis(resources);
-    self.drawHistogram(34);
-    self.drawLineChart(self.macd_y_points[9..], .{ .r = 255, .g = 255, .b = 0, .a = 255 }, 34);
-    self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, 34);
+    self.drawHistogram(offset);
+    self.drawLineChart(self.macd_y_points[self.signal_len..], .{ .r = 255, .g = 255, .b = 0, .a = 255 }, offset);
+    self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, offset);
+    try self.drawTitle(allocator, resources);
 
     const is_on_divider = rl.checkCollisionPointLine(
         rl.getMousePosition(),
@@ -275,7 +350,7 @@ pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resourc
     }
 }
 
-fn handleEvents(self: *Self, ctx: *EventCtx) void {
+fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
     const is_mouse_left_down = rl.isMouseButtonDown(.left);
     if (!is_mouse_left_down) self.drag_mode = .none;
 
@@ -332,6 +407,57 @@ fn handleEvents(self: *Self, ctx: *EventCtx) void {
             ctx.state.mouse_left_down = 1;
         }
     }
+
+    if(rl.isKeyPressed(.left)) {
+        if(self.last_key_down_time == 0) {
+            self.cur_edit_idx = if(self.cur_edit_idx == 0) 2 else self.cur_edit_idx - 1;
+        }
+        self.last_key_down_time += KEY_SENSITIVITY;
+    }
+
+    if(rl.isKeyPressed(.right)) {
+        if(self.last_key_down_time == 0) {
+            self.cur_edit_idx = if(self.cur_edit_idx == 2) 0 else self.cur_edit_idx + 1;
+        }
+        self.last_key_down_time += KEY_SENSITIVITY;
+    }
+
+    if(rl.isKeyDown(.up)) {
+        if(self.last_key_down_time == 0) {
+            switch(self.cur_edit_idx) {
+                0 => self.fast_len = std.math.clamp(self.fast_len +| 1, 1, self.slow_len),
+                1 => self.slow_len = std.math.clamp(self.slow_len +| 1, self.fast_len, 100),
+                2 => self.signal_len = std.math.clamp(self.signal_len +| 1, 1, self.slow_len),
+                else => unreachable
+            }
+
+            try self.reallocBuffers(allocator);
+            self.computeMACD();
+        }
+        self.last_key_down_time += KEY_SENSITIVITY;
+    }
+
+    if(rl.isKeyDown(.down)) {
+        if(self.last_key_down_time == 0) {
+            switch(self.cur_edit_idx) {
+                0 => self.fast_len = std.math.clamp(self.fast_len -| 1, 1, self.slow_len),
+                1 => self.slow_len = std.math.clamp(self.slow_len -| 1, self.fast_len, 100),
+                2 => self.signal_len = std.math.clamp(self.signal_len -| 1, 8, self.slow_len),
+                else => unreachable
+            }
+
+            try self.reallocBuffers(allocator);
+            self.computeMACD();
+
+            try self.reallocBuffers(allocator);
+            self.computeMACD();
+        }
+        self.last_key_down_time += KEY_SENSITIVITY;
+    }
+
+    if(EventCtx.isAnyKeyReleased(&.{ .up, .down, .left, .right }) or self.last_key_down_time > 1) {
+        self.last_key_down_time = 0;
+    }
 }
 
 fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
@@ -350,7 +476,7 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Event
         try s.handleEvents(allocator, ctx);
     }
 
-    self.handleEvents(ctx);
+    try self.handleEvents(allocator, ctx);
 }
 
 fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *EventCtx, resources: *Resources) !void {

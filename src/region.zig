@@ -39,6 +39,15 @@ pub const EventCtx = struct {
     pub inline fn isHorizontalScroll(self: *const EventCtx) bool {
         return @abs(self.wheel_d.x) > @abs(self.wheel_d.y);
     }
+
+    pub fn isAnyKeyReleased(keys: []const rl.KeyboardKey) bool {
+        for(keys) |k| {
+            if(rl.isKeyReleased(k)) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 pub fn emptyChildWillDestroyFn(_: *anyopaque, _: *Self) void {

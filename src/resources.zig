@@ -14,3 +14,7 @@ pub fn init() !Self {
         .font = font
     };
 }
+
+pub fn measureText(self: *const Self, text: [:0]const u8, font_size: f32, spacing: f32) rl.Vector2 {
+    return rl.measureTextEx(self.font, text, font_size, spacing);
+}
