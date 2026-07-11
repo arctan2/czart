@@ -27,6 +27,10 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
     const wheel = rl.getMouseWheelMoveV();
     self.event_ctx.state = .{};
 
+    if(rl.isMouseButtonPressed(.left)) {
+        self.event_ctx.focused = null;
+    }
+
     self.event_ctx.wheel_d = .{
         .x = wheel.x * self.event_ctx.zoom_sensitivity,
         .y = wheel.y * self.event_ctx.zoom_sensitivity

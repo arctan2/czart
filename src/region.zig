@@ -14,6 +14,7 @@ pub const EventCtx = struct {
         view_y_resize: u1 = 0,
         y_pan: u1 = 0,
         mouse_left_down: u1 = 0,
+        focus: u1 = 0,
     };
 
     zoom_sensitivity: f32 = 0.05,
@@ -24,11 +25,25 @@ pub const EventCtx = struct {
     wheel_d: rl.Vector2 = .{ .x = 0, .y = 0 },
     state: EventState = .{},
     captured: ?*anyopaque = null,
+    focused: ?*anyopaque = null,
 
     pub fn tryOwnMouseDown(self: *EventCtx, ptr: *anyopaque, rect: rl.Rectangle) bool {
         if (self.captured) |c| return c == ptr;
         if (!rl.checkCollisionPointRec(rl.getMousePosition(), rect)) return false;
-        if (rl.isMouseButtonDown(.left)) self.captured = ptr;
+        if (rl.isMouseButtonDown(.left)) {
+            self.captured = ptr;
+            self.state.mouse_left_down = 1;
+        }
+        return true;
+    }
+
+    pub fn tryFocus(self: *EventCtx, ptr: *anyopaque, rect: rl.Rectangle) bool {
+        if (self.focused) |f| return f == ptr;
+        if (!rl.checkCollisionPointRec(rl.getMousePosition(), rect)) return false;
+        if (rl.isMouseButtonPressed(.left)) {
+            self.focused = ptr;
+            self.state.focus = 1;
+        }
         return true;
     }
 

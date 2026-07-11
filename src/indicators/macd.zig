@@ -12,7 +12,7 @@ const Self = @This();
 const DEFAULT_FAST_LEN: usize = 12;
 const DEFAULT_SLOW_LEN: usize = 26;
 const DEFAULT_SIGNAL_LEN: usize = 9;
-const KEY_SENSITIVITY = 0.2;
+const DEFAULT_KEY_SENSITIVITY = 0.2;
 
 macd_y_points: []f32,
 signal_y_points: []f32,
@@ -32,6 +32,7 @@ signal_len: usize = DEFAULT_SIGNAL_LEN,
 
 cur_edit_idx: usize = 0,
 last_key_down_time: f32 = 0,
+key_sensitivity: f32 = 0.2,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -56,6 +57,7 @@ pub fn init(
         .slow_len = DEFAULT_SLOW_LEN,
         .fast_len = DEFAULT_FAST_LEN,
         .signal_len = DEFAULT_SIGNAL_LEN,
+        .key_sensitivity = DEFAULT_KEY_SENSITIVITY
     };
 
     self.computeLayout();
@@ -285,7 +287,7 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
     }
 }
 
-pub fn drawTitle(self: *Self, allocator: std.mem.Allocator, resources: *const Resources) !void {
+pub fn drawTitle(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
     const pad = 10;
     const font_size: f32 = 16;
     const top = self.layout.top + pad;
@@ -294,6 +296,8 @@ pub fn drawTitle(self: *Self, allocator: std.mem.Allocator, resources: *const Re
     const text = try std.fmt.allocPrintSentinel(allocator, "MACD({d}, {d}, {d})", .{self.fast_len, self.slow_len, self.signal_len}, 0);
     defer allocator.free(text);
     rl.drawTextEx(resources.font, text, .{ .x = left, .y = top }, font_size, 1, .white);
+
+    if(ctx.focused == null or ctx.focused.? != @as(*anyopaque, @ptrCast(self))) return;
 
     const fast_len_text = try std.fmt.allocPrintSentinel(allocator, "{d}, ", .{self.fast_len}, 0);
     defer allocator.free(fast_len_text);
@@ -324,13 +328,13 @@ pub fn drawTitle(self: *Self, allocator: std.mem.Allocator, resources: *const Re
     );
 }
 
-pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources) !void {
+pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
     const offset = self.signal_len + self.slow_len - 1;
     self.drawYAxis(resources);
     self.drawHistogram(offset);
     self.drawLineChart(self.macd_y_points[self.signal_len..], .{ .r = 255, .g = 255, .b = 0, .a = 255 }, offset);
     self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, offset);
-    try self.drawTitle(allocator, resources);
+    try self.drawTitle(allocator, resources, ctx);
 
     const is_on_divider = rl.checkCollisionPointLine(
         rl.getMousePosition(),
@@ -350,7 +354,7 @@ pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resourc
     }
 }
 
-fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
+fn handleEvents(self: *Self, ctx: *EventCtx) void {
     const is_mouse_left_down = rl.isMouseButtonDown(.left);
     if (!is_mouse_left_down) self.drag_mode = .none;
 
@@ -404,45 +408,50 @@ fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx) !void
             ctx.state.y_pan = 1;
         } else if(rl.isMouseButtonDown(.left)) {
             ctx.drag_start_view_y = self.view_y;
-            ctx.state.mouse_left_down = 1;
         }
     }
+}
+
+fn handleKeyEvents(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
+    if(ctx.focused != @as(*anyopaque, @ptrCast(self))) return;
+
+    const MAX_VAL = 100;
 
     if(rl.isKeyPressed(.left)) {
         if(self.last_key_down_time == 0) {
             self.cur_edit_idx = if(self.cur_edit_idx == 0) 2 else self.cur_edit_idx - 1;
         }
-        self.last_key_down_time += KEY_SENSITIVITY;
+        self.last_key_down_time += self.key_sensitivity;
     }
 
     if(rl.isKeyPressed(.right)) {
         if(self.last_key_down_time == 0) {
             self.cur_edit_idx = if(self.cur_edit_idx == 2) 0 else self.cur_edit_idx + 1;
         }
-        self.last_key_down_time += KEY_SENSITIVITY;
+        self.last_key_down_time += self.key_sensitivity;
     }
 
     if(rl.isKeyDown(.up)) {
         if(self.last_key_down_time == 0) {
             switch(self.cur_edit_idx) {
                 0 => self.fast_len = std.math.clamp(self.fast_len +| 1, 1, self.slow_len),
-                1 => self.slow_len = std.math.clamp(self.slow_len +| 1, self.fast_len, 100),
-                2 => self.signal_len = std.math.clamp(self.signal_len +| 1, 1, self.slow_len),
+                1 => self.slow_len = std.math.clamp(self.slow_len +| 1, self.fast_len, MAX_VAL),
+                2 => self.signal_len = std.math.clamp(self.signal_len +| 1, 1, MAX_VAL),
                 else => unreachable
             }
 
             try self.reallocBuffers(allocator);
             self.computeMACD();
         }
-        self.last_key_down_time += KEY_SENSITIVITY;
+        self.last_key_down_time += self.key_sensitivity;
     }
 
     if(rl.isKeyDown(.down)) {
         if(self.last_key_down_time == 0) {
             switch(self.cur_edit_idx) {
                 0 => self.fast_len = std.math.clamp(self.fast_len -| 1, 1, self.slow_len),
-                1 => self.slow_len = std.math.clamp(self.slow_len -| 1, self.fast_len, 100),
-                2 => self.signal_len = std.math.clamp(self.signal_len -| 1, 8, self.slow_len),
+                1 => self.slow_len = std.math.clamp(self.slow_len -| 1, self.fast_len, MAX_VAL),
+                2 => self.signal_len = std.math.clamp(self.signal_len -| 1, 8, MAX_VAL),
                 else => unreachable
             }
 
@@ -452,11 +461,15 @@ fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx) !void
             try self.reallocBuffers(allocator);
             self.computeMACD();
         }
-        self.last_key_down_time += KEY_SENSITIVITY;
+        self.last_key_down_time += self.key_sensitivity;
     }
 
-    if(EventCtx.isAnyKeyReleased(&.{ .up, .down, .left, .right }) or self.last_key_down_time > 1) {
+    if(EventCtx.isAnyKeyReleased(&.{ .up, .down, .left, .right })) {
         self.last_key_down_time = 0;
+        self.key_sensitivity = DEFAULT_KEY_SENSITIVITY;
+    } else if(self.last_key_down_time > 1) {
+        self.last_key_down_time = 0;
+        self.key_sensitivity += 0.2;
     }
 }
 
@@ -476,12 +489,17 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Event
         try s.handleEvents(allocator, ctx);
     }
 
-    try self.handleEvents(allocator, ctx);
+    if(ctx.state.focus == 0) {
+        _ = ctx.tryFocus(ptr, self.layout.getRect());
+        try self.handleKeyEvents(allocator, ctx);
+    }
+
+    self.handleEvents(ctx);
 }
 
-fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *EventCtx, resources: *Resources) !void {
+fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *EventCtx, resources: *Resources) !void {
     const self: *Self = @alignCast(@ptrCast(ptr));
-    try self.draw(allocator, resources);
+    try self.draw(allocator, resources, ctx);
 }
 
 fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {
