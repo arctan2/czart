@@ -8,12 +8,14 @@ const common = @import("common");
 const defaults = @import("defaults");
 const EventCtx = Region.EventCtx;
 const MinMax = common.MinMax;
-const ParamEditor = @import("param_editor.zig").ParamEditor(1);
+const ParamEditor = @import("param_editor.zig").ParamEditor(2);
 
 const Self = @This();
 const DEFAULT_PERIOD: usize = 14;
+const DEFAULT_SMA_PERIOD: usize = 14;
 
 points: []f32,
+sma_points: []f32,
 layout: Layout,
 region: Region,
 candle_chart: *charts.CandleChart,
@@ -24,6 +26,7 @@ drag_start_height: f32 = 0,
 drag_start_above_height: f32 = 0,
 
 period: usize = DEFAULT_PERIOD,
+sma_period: usize = DEFAULT_SMA_PERIOD,
 
 editor: ParamEditor = .{},
 
@@ -32,8 +35,10 @@ pub fn init(
     candle_chart: *charts.CandleChart,
 ) !*Self {
     const self = try allocator.create(Self);
+    const points_len = (candle_chart.candles.len - DEFAULT_PERIOD) + 1;
     self.* = .{
-        .points = try allocator.alloc(f32, (candle_chart.candles.len - DEFAULT_PERIOD) + 1),
+        .points = try allocator.alloc(f32, points_len),
+        .sma_points = try allocator.alloc(f32, points_len - DEFAULT_SMA_PERIOD + 1),
         .layout = .empty(candle_chart.layout.screen_rect),
         .region = .{
             .ptr = @ptrCast(self),
@@ -45,6 +50,7 @@ pub fn init(
         .candle_chart = candle_chart,
         .view_y = .{ .max = 2, .min = -2 },
         .period = DEFAULT_PERIOD,
+        .sma_period = DEFAULT_SMA_PERIOD,
     };
 
     return self;
@@ -68,6 +74,7 @@ fn computeLayout(self: *Self) void {
 pub fn compute(self: *Self) void {
     self.computeLayout();
     self.computeRSI();
+    self.computeSMAOfRSI();
     self.computeMinMaxY();
 }
 
@@ -78,6 +85,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         above_layout.height += self.layout.height;
     }
     allocator.free(self.points);
+    allocator.free(self.sma_points);
     allocator.destroy(self);
 }
 
@@ -89,6 +97,14 @@ fn computeMinMaxY(self: *Self) void {
         min = @min(min, self.points[i]);
         max = @max(max, self.points[i]);
     }
+
+    for(0..self.sma_points.len) |i| {
+        min = @min(min, self.sma_points[i]);
+        max = @max(max, self.sma_points[i]);
+    }
+
+    min = @min(min, 30);
+    max = @max(max, 70);
 
     self.view_y.max = max;
     self.view_y.min = min;
@@ -105,7 +121,9 @@ pub fn toViewY(self: *Self, y: f32) f32 {
 }
 
 pub fn reallocBuffers(self: *Self, allocator: std.mem.Allocator) !void {
-    self.points = try allocator.realloc(self.points, (self.candle_chart.candles.len - self.period) + 1);
+    const points_len = (self.candle_chart.candles.len - self.period) + 1;
+    self.points = try allocator.realloc(self.points, points_len);
+    self.sma_points = try allocator.realloc(self.sma_points, points_len - self.sma_period + 1);
 }
 
 fn computeRSI(self: *const Self) void {
@@ -131,6 +149,22 @@ fn computeRSI(self: *const Self) void {
         const t = if(diff > 0) avg_gain else avg_loss;
         (if(diff > 0) avg_gain else avg_loss) = (t * (period - 1) + @abs(diff)) / period;
         self.points[i - self.period + 1] = 100 - (100 / (1 + (avg_gain / avg_loss)));
+    }
+}
+
+fn computeSMAOfRSI(self: *const Self) void {
+    if (self.points.len < self.sma_period) return;
+
+    const sma_period_f: f32 = @floatFromInt(self.sma_period);
+
+    var sum: f32 = 0;
+    for (self.points[0..self.sma_period]) |p| sum += p;
+    self.sma_points[0] = sum / sma_period_f;
+
+    for (self.sma_period..self.points.len) |i| {
+        sum += self.points[i];
+        sum -= self.points[i - self.sma_period];
+        self.sma_points[i - self.sma_period + 1] = sum / sma_period_f;
     }
 }
 
@@ -208,7 +242,28 @@ fn drawLineChart(self: *Self, points: []f32, color: rl.Color, start_idx: usize) 
     }
 }
 
-fn hoveredValue(self: *const Self) ?f32 {
+fn drawReferenceLines(self: *Self) void {
+    rl.beginScissorMode(
+        @intFromFloat(self.layout.left),
+        @intFromFloat(self.layout.top),
+        @intFromFloat(self.layout.width),
+        @intFromFloat(self.layout.height),
+    );
+    defer rl.endScissorMode();
+
+    const levels = [_]f32{ 30, 70 };
+    for (levels) |level| {
+        const screen_y = self.toScreenY(level);
+        rl.drawLineEx(
+            .{ .x = self.layout.left, .y = screen_y },
+            .{ .x = self.layout.right(), .y = screen_y },
+            1.0,
+            .{ .r = 200, .g = 200, .b = 200, .a = 255 },
+        );
+    }
+}
+
+fn hoveredValues(self: *const Self) ?struct { rsi: f32, sma: ?f32 } {
     if (self.points.len == 0) return null;
 
     const offset = self.period;
@@ -218,7 +273,13 @@ fn hoveredValue(self: *const Self) ?f32 {
     const i: usize = @intFromFloat(idx - @as(f32, @floatFromInt(offset)));
     if (i >= self.points.len) return null;
 
-    return self.points[i];
+    const sma_offset = self.sma_period - 1;
+    const sma: ?f32 = if (i >= sma_offset and (i - sma_offset) < self.sma_points.len)
+        self.sma_points[i - sma_offset]
+    else
+        null;
+
+    return .{ .rsi = self.points[i], .sma = sma };
 }
 
 pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
@@ -227,27 +288,43 @@ pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Re
     const left = self.layout.left + pad;
     const is_focused = ctx.focused != null and ctx.focused.? == @as(*anyopaque, @ptrCast(self));
 
-    try self.editor.drawLabel(allocator, "RSI", .{ self.period }, .{ .x = left, .y = top }, resources, is_focused);
+    try self.editor.drawLabel(
+        allocator, "RSI", .{ self.period, self.sma_period }, .{ .x = left, .y = top }, resources, is_focused
+    );
 
-    if (self.hoveredValue()) |value| {
+    if (self.hoveredValues()) |v| {
         const font_size = defaults.INDICATOR_FONT_SIZE;
-        const prefix_text = try std.fmt.allocPrintSentinel(allocator, "RSI({d})", .{self.period}, 0);
-        defer allocator.free(prefix_text);
-        const prefix_w = resources.measureText(prefix_text, font_size, 1).x;
-        const text = try std.fmt.allocPrintSentinel(allocator, "{d:.2}", .{value}, 0);
-        defer allocator.free(text);
-        rl.drawTextEx(
-            resources.font,
-            text,
-            .{ .x = left + prefix_w + 8, .y = top },
-            font_size, 1,
-            .{ .r = 0, .g = 150, .b = 255, .a = 255 },
+        const prefix_text = try std.fmt.allocPrintSentinel(
+            allocator, "RSI({d}, {d})", .{ self.period, self.sma_period }, 0
         );
+        defer allocator.free(prefix_text);
+        var value_x = left + resources.measureText(prefix_text, font_size, 1).x + 8;
+
+        const rsi_text = try std.fmt.allocPrintSentinel(allocator, "{d:.2}", .{v.rsi}, 0);
+        defer allocator.free(rsi_text);
+        rl.drawTextEx(
+            resources.font, rsi_text, .{ .x = value_x, .y = top }, font_size, 1,
+            .{ .r = 255, .g = 0, .b = 255, .a = 255 },
+        );
+        value_x += resources.measureText(rsi_text, font_size, 1).x + 8;
+
+        if (v.sma) |sma| {
+            const sma_text = try std.fmt.allocPrintSentinel(allocator, "{d:.2}", .{sma}, 0);
+            defer allocator.free(sma_text);
+            rl.drawTextEx(
+                resources.font, sma_text, .{ .x = value_x, .y = top }, font_size, 1,
+                .{ .r = 255, .g = 165, .b = 0, .a = 255 },
+            );
+        }
     }
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
+    self.drawReferenceLines();
     self.drawLineChart(self.points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, self.period);
+    if (self.sma_points.len > 1) {
+        self.drawLineChart(self.sma_points, .{ .r = 255, .g = 165, .b = 0, .a = 255 }, self.period + self.sma_period - 1);
+    }
     self.drawYAxis(resources);
     try self.drawLabel(allocator, resources, ctx);
 
@@ -334,17 +411,19 @@ fn handleEvents(self: *Self, ctx: *EventCtx) void {
 fn handleKeyEvents(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
     if(ctx.focused != @as(*anyopaque, @ptrCast(self))) return;
 
-    var params = [1]usize{ self.period };
+    var params = [2]usize{ self.period, self.sma_period };
     const changed = self.editor.handleKeyEvent(
         &params,
-        .{ 1 },
-        .{ defaults.MAX_PERIOD },
+        .{ 1, 1 },
+        .{ defaults.MAX_PERIOD, defaults.MAX_PERIOD },
     );
     self.period = params[0];
+    self.sma_period = params[1];
 
     if (changed) {
         try self.reallocBuffers(allocator);
         self.computeRSI();
+        self.computeSMAOfRSI();
     }
 }
 
