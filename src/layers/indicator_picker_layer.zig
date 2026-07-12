@@ -6,9 +6,10 @@ const common = @import("common");
 const Layout = @import("layout");
 const Events = @import("events").Events;
 const Resources = @import("resources");
-const Region = @import("region");
 const rgui = @import("raygui");
 const widgets = @import("widgets");
+const Region = @import("region");
+const EventCtx = Region.EventCtx;
 
 const Self = @This();
 
@@ -51,21 +52,21 @@ const ActiveIndicator = struct {
 
 is_active: bool = false,
 layout: Layout,
-region: Region,
 search_select_widget: widgets.SearchSelect,
 candle_chart: *charts.CandleChart,
+pane_region: *Region,
 active: std.ArrayList(ActiveIndicator),
 
-pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, candle_chart: *charts.CandleChart) !*Self {
+pub fn init(
+    allocator: std.mem.Allocator,
+    screen_rect: *const rl.Rectangle,
+    pane_region: *Region,
+    candle_chart: *charts.CandleChart
+) !*Self {
     var self = try allocator.create(Self);
     self.* = .{
         .layout = .empty(screen_rect),
-        .region = .{
-            .ptr = @ptrCast(self),
-            .drawFn = drawRegion,
-            .handleEventsFn = handleEventsRegion,
-            .destroyFn = deinitRegion,
-        },
+        .pane_region = pane_region,
         .search_select_widget = try .init(allocator, &ITEMS_MAP, &self.layout),
         .candle_chart = candle_chart,
         .active = .empty,
@@ -88,7 +89,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.destroy(self);
 }
 
-fn draw(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
+pub fn draw(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx, resources: *Resources) !void {
     for (self.active.items) |*ind| {
         ind.draw(self.candle_chart);
     }
@@ -109,12 +110,12 @@ fn addIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) !v
                 allocator,
                 self.layout.screen_rect,
                 self.candle_chart,
-                if(self.region.getPrevSib()) |sib| (
-                    if(sib.getLayout()) |l| l
+                if(self.pane_region.child) |child| (
+                    if(child.getLayout()) |l| l
                     else &self.candle_chart.layout
                 ) else &self.candle_chart.layout
             );
-            self.region.insertAsPrevSib(&macd_ind.region);
+            self.pane_region.appendChild(&macd_ind.region);
             break :b .{ .macd = macd_ind };
         },
         else => return,
@@ -159,16 +160,19 @@ pub fn setIsActive(self: *Self, v: bool) void {
     @memset(self.search_select_widget.buf, 0);
 }
 
-fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
-    var self: *Self = @ptrCast(@alignCast(ptr));
-
+pub fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
     if(rl.isWindowResized()) {
         self.computeLayout();
     }
 
-    if (!self.is_active) {
+    if(!self.is_active) {
+        self.is_active = rl.isKeyPressed(.o);
+        while (rl.getCharPressed() != 0) {}
+        if(self.is_active) ctx.state.focus = 1;
         return;
     }
+
+    ctx.state.focus = 1;
 
     const mouse = rl.getMousePosition();
     const is_mouse_click = rl.isMouseButtonPressed(.left);
@@ -185,12 +189,3 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
     return;
 }
 
-fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
-    var self: *Self = @ptrCast(@alignCast(ptr));
-    try self.draw(allocator, ctx, resources);
-}
-
-fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {
-    var self: *Self = @ptrCast(@alignCast(ptr));
-    self.deinit(allocator);
-}

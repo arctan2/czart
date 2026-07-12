@@ -141,6 +141,10 @@ pub fn destroy(self: *Self, allocator: std.mem.Allocator) void {
         child.destroy(allocator);
     }
 
+    if (self.sib) |sib| {
+        sib.destroy(allocator);
+    }
+
     self.destroyFn(self.ptr, allocator);
 }
 

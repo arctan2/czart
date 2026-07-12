@@ -3,22 +3,36 @@ const rl = @import("raylib");
 const Region = @import("region");
 const Resources = @import("resources");
 const charts = @import("charts");
-const RootRegion = @import("regions/root_region.zig");
+const PaneLayer = @import("layers/pane_layer.zig");
+const DialogLayer = @import("layers/dialog_layer.zig");
+const ToolsLayer = @import("layers/tools_layer.zig");
+const IndicatorPickerLayer = @import("layers/indicator_picker_layer.zig");
 
 const Self = @This();
 var SCREEN_RECT: rl.Rectangle = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
 var EVENT_CTX: Region.EventCtx = .{};
 
 resources: Resources,
-root: *RootRegion,
+pane_layer: *PaneLayer,
+dialog_layer: *DialogLayer,
+tools_layer: *ToolsLayer,
+indicator_picker_layer: *IndicatorPickerLayer,
 event_ctx: Region.EventCtx = .{},
 
 pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []charts.CandleChart.Candle) !Self {
     SCREEN_RECT = screen_rect;
 
+    const pane_layer: *PaneLayer = try .init(allocator, &SCREEN_RECT, candles);
+    const indicator_picker_layer: *IndicatorPickerLayer = try .init(allocator, &SCREEN_RECT, &pane_layer.region, pane_layer.candle_chart);
+    const dialog_layer: *DialogLayer = try .init(allocator, &SCREEN_RECT, pane_layer.candle_chart);
+    const tools_layer: *ToolsLayer = try .init(allocator, &SCREEN_RECT, pane_layer.candle_chart);
+
     return .{
         .resources = try .init(),
-        .root = try .init(allocator, &SCREEN_RECT, candles)
+        .pane_layer = pane_layer,
+        .indicator_picker_layer = indicator_picker_layer,
+        .dialog_layer = dialog_layer,
+        .tools_layer = tools_layer
     };
 }
 
@@ -41,7 +55,8 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
         SCREEN_RECT.width = @as(f32, @floatFromInt(rl.getScreenWidth())) - (SCREEN_RECT.x * 2);
     }
 
-    try self.root.region.handleEvents(allocator, &self.event_ctx);
+    try self.indicator_picker_layer.handleEvents(allocator, &self.event_ctx);
+    try self.pane_layer.region.handleEvents(allocator, &self.event_ctx);
 
     if (rl.isMouseButtonDown(.left)) {
         if (self.event_ctx.drag_start_mouse) |start| {
@@ -61,10 +76,16 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator) !void {
-    try self.root.region.draw(allocator, &self.event_ctx, &self.resources);
+    try self.pane_layer.region.draw(allocator, &self.event_ctx, &self.resources);
+    try self.tools_layer.draw(allocator, &self.event_ctx, &self.resources);
+    try self.indicator_picker_layer.draw(allocator, &self.event_ctx, &self.resources);
+    try self.dialog_layer.draw(allocator, &self.event_ctx, &self.resources);
 }
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
-    self.root.region.destroy(allocator);
+    self.dialog_layer.deinit(allocator);
+    self.tools_layer.deinit(allocator);
+    self.indicator_picker_layer.deinit(allocator);
+    self.pane_layer.region.destroy(allocator);
 }
 

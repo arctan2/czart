@@ -1,7 +1,6 @@
 const rl = @import("raylib");
 const std = @import("std");
 const charts = @import("charts");
-const indicators = @import("indicators");
 const common = @import("common");
 const Layout = @import("layout");
 const Events = @import("events").Events;
@@ -10,7 +9,6 @@ const Timeframe = common.Timeframe;
 const MinMax = common.MinMax;
 const DateFormatter = common.DateFormatter;
 const Region = @import("region");
-const IndicatorPicker = @import("indicator_picker.zig");
 
 const Self = @This();
 
@@ -18,19 +16,15 @@ timeframe: Timeframe = .m1,
 layout: *Layout,
 candle_chart: *charts.CandleChart,
 region: Region,
-indicator_picker: *IndicatorPicker,
 
 pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, candles: []charts.CandleChart.Candle) !*Self {
     const self = try allocator.create(Self);
     var candle_chart = try allocator.create(charts.CandleChart);
     candle_chart.* = .init(screen_rect, candles);
 
-    const indicator_picker = try IndicatorPicker.init(allocator, screen_rect, candle_chart);
-
     self.* = .{
         .layout = &candle_chart.layout,
         .candle_chart = candle_chart,
-        .indicator_picker = indicator_picker,
         .region = .{
             .ptr = @ptrCast(self),
             .drawFn = drawRegion,
@@ -38,8 +32,6 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
             .destroyFn = deinitRegion,
         }
     };
-
-    self.region.appendChild(&indicator_picker.region);
 
     return self;
 }
@@ -59,7 +51,7 @@ fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void 
     self.candle_chart.drawYAxis(resources);
     try self.candle_chart.drawXAxis(allocator, resources);
     self.candle_chart.drawCandles();
-    if(!self.indicator_picker.is_active and rl.checkCollisionPointRec(rl.getMousePosition(), self.candle_chart.layout.getRect())) {
+    if(rl.checkCollisionPointRec(rl.getMousePosition(), self.candle_chart.layout.getRect())) {
         try self.candle_chart.drawCrosshair(allocator, self.layout, &self.candle_chart.view.y, resources);
     }
 }
@@ -131,12 +123,6 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
     if(rl.isWindowResized()) {
         self.layout.height = self.layout.screen_rect.height - charts.CandleChart.X_AXIS_HEIGHT;
         self.layout.width = self.layout.screen_rect.width - charts.CandleChart.Y_AXIS_WIDTH;
-    }
-
-    if(!self.indicator_picker.is_active and rl.isKeyPressed(.o)) {
-        self.indicator_picker.setIsActive(true);
-        while (rl.getCharPressed() != 0) {}
-        return;
     }
 
     if(self.region.child) |child| {
