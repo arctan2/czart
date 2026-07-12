@@ -2,21 +2,31 @@ const std = @import("std");
 const rl = @import("raylib");
 const charts = @import("charts");
 const Layout = @import("layout");
+const Resources = @import("resources");
+const ParamEditor = @import("param_editor.zig").ParamEditor(2);
+const defaults = @import("defaults");
 
 const Self = @This();
-const PERIOD = 20;
+
+const STDDEV_MULT_TENTHS = 20;
+const MAX_STDDEV_MULT_TENTHS = 100;
 
 sma: []f32,
 upper: []f32,
 lower: []f32,
 candle_chart: *const charts.CandleChart,
+period: usize,
+stddev_mult_tenths: usize,
+editor: ParamEditor = .{},
 
 pub fn init(allocator: std.mem.Allocator, candle_chart: *const charts.CandleChart) !Self {
     const self = Self{
-        .sma = try allocator.alloc(f32, candle_chart.candles.len - PERIOD + 1),
-        .upper = try allocator.alloc(f32, candle_chart.candles.len - PERIOD + 1),
-        .lower = try allocator.alloc(f32, candle_chart.candles.len - PERIOD + 1),
-        .candle_chart = candle_chart
+        .sma = try allocator.alloc(f32, candle_chart.candles.len - defaults.PERIOD + 1),
+        .upper = try allocator.alloc(f32, candle_chart.candles.len - defaults.PERIOD + 1),
+        .lower = try allocator.alloc(f32, candle_chart.candles.len - defaults.PERIOD + 1),
+        .candle_chart = candle_chart,
+        .period = defaults.PERIOD,
+        .stddev_mult_tenths = STDDEV_MULT_TENTHS,
     };
     self.calcBands();
     return self;
@@ -28,42 +38,58 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.free(self.lower);
 }
 
+fn reallocBuffers(self: *Self, allocator: std.mem.Allocator) !void {
+    allocator.free(self.sma);
+    allocator.free(self.upper);
+    allocator.free(self.lower);
+    self.sma = try allocator.alloc(f32, self.candle_chart.candles.len - self.period + 1);
+    self.upper = try allocator.alloc(f32, self.candle_chart.candles.len - self.period + 1);
+    self.lower = try allocator.alloc(f32, self.candle_chart.candles.len - self.period + 1);
+}
+
+fn stddevMult(self: *const Self) f64 {
+    return @as(f64, @floatFromInt(self.stddev_mult_tenths)) / 10.0;
+}
+
 fn calcBands(self: *const Self) void {
     const candles = self.candle_chart.candles;
-    if (candles.len < PERIOD) return;
+    if (candles.len < self.period) return;
+
+    const mult = self.stddevMult();
 
     var sum: f64 = 0;
     var sum_sq: f64 = 0;
 
-    for (candles[0..PERIOD]) |candle| {
+    for (candles[0..self.period]) |candle| {
         const c: f64 = candle.close;
         sum += c;
         sum_sq += c * c;
     }
 
-    var mean = sum / PERIOD;
-    var variance = @max(0.0, (sum_sq / PERIOD) - (mean * mean));
+    const period_f: f64 = @floatFromInt(self.period);
+    var mean = sum / period_f;
+    var variance = @max(0.0, (sum_sq / period_f) - (mean * mean));
     var stddev = std.math.sqrt(variance);
 
     self.sma[0] = @floatCast(mean);
-    self.upper[0] = @floatCast(mean + 2 * stddev);
-    self.lower[0] = @floatCast(mean - 2 * stddev);
+    self.upper[0] = @floatCast(mean + mult * stddev);
+    self.lower[0] = @floatCast(mean - mult * stddev);
 
-    for (PERIOD..candles.len) |i| {
+    for (self.period..candles.len) |i| {
         const in: f64 = candles[i].close;
-        const out: f64 = candles[i - PERIOD].close;
+        const out: f64 = candles[i - self.period].close;
 
         sum += in - out;
         sum_sq += in * in - out * out;
 
-        const idx = i - PERIOD + 1;
-        mean = sum / PERIOD;
-        variance = @max(0.0, (sum_sq / PERIOD) - (mean * mean));
+        const idx = i - self.period + 1;
+        mean = sum / period_f;
+        variance = @max(0.0, (sum_sq / period_f) - (mean * mean));
         stddev = std.math.sqrt(variance);
 
         self.sma[idx] = @floatCast(mean);
-        self.upper[idx] = @floatCast(mean + 2 * stddev);
-        self.lower[idx] = @floatCast(mean - 2 * stddev);
+        self.upper[idx] = @floatCast(mean + mult * stddev);
+        self.lower[idx] = @floatCast(mean - mult * stddev);
     }
 }
 
@@ -123,8 +149,57 @@ fn drawBand(self: *const Self, offset_idx: usize, color: rl.Color) void {
 }
 
 pub fn draw(self: *const Self) void {
-    self.drawBand(PERIOD - 1, .{ .r = 0, .g = 120, .b = 255, .a = 30 });
-    self.drawLine(self.sma, PERIOD - 1, .white);
-    self.drawLine(self.upper, PERIOD - 1, .purple);
-    self.drawLine(self.lower, PERIOD - 1, .blue);
+    self.drawBand(self.period - 1, .{ .r = 0, .g = 120, .b = 255, .a = 30 });
+    self.drawLine(self.sma, self.period - 1, .white);
+    self.drawLine(self.upper, self.period - 1, .purple);
+    self.drawLine(self.lower, self.period - 1, .blue);
+}
+
+pub fn drawLabel(
+    self: *const Self,
+    allocator: std.mem.Allocator,
+    start: rl.Vector2,
+    is_focused: bool,
+    resources: *Resources,
+) !bool {
+    const font_size: f32 = 16;
+    const text = try std.fmt.allocPrintSentinel(
+        allocator, "BB({d}, {d:.1})", .{ self.period, self.stddevMult() }, 0
+    );
+    defer allocator.free(text);
+    rl.drawTextEx(resources.font, text, start, font_size, 1, .white);
+
+    if(!is_focused) return true;
+
+    const prefix_w = resources.measureText("BB(", font_size, 1).x;
+    const period_text = try std.fmt.allocPrintSentinel(allocator, "{d}, ", .{self.period}, 0);
+    defer allocator.free(period_text);
+    const mult_text = try std.fmt.allocPrintSentinel(allocator, "{d:.1}", .{self.stddevMult()}, 0);
+    defer allocator.free(mult_text);
+
+    const period_w = resources.measureText(period_text, font_size, 1).x;
+    const mult_w = resources.measureText(mult_text, font_size, 1).x;
+
+    const x = if (self.editor.cur_edit_idx == 1) period_w else 0;
+    const w = if (self.editor.cur_edit_idx == 1) mult_w else period_w;
+
+    rl.drawRectangleV(
+        .{ .x = start.x + prefix_w + x, .y = start.y },
+        .{ .x = w, .y = resources.measureText("BB(", font_size, 1).y },
+        .{ .r = 255, .g = 255, .b = 255, .a = 100 }
+    );
+
+    return true;
+}
+
+pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
+    var params = [2]usize{ self.period, self.stddev_mult_tenths };
+    const changed = self.editor.handleKeyEvent(&params, .{ 1, 1 }, .{ defaults.MAX_PERIOD, MAX_STDDEV_MULT_TENTHS });
+    self.period = params[0];
+    self.stddev_mult_tenths = params[1];
+
+    if (changed) {
+        try self.reallocBuffers(allocator);
+        self.calcBands();
+    }
 }

@@ -10,66 +10,34 @@ const rgui = @import("raygui");
 const widgets = @import("widgets");
 const Region = @import("region");
 const EventCtx = Region.EventCtx;
+const ActiveIndicators = @import("../active_indicators.zig");
+const ActiveIndicator = ActiveIndicators.ActiveIndicator;
 
 const Self = @This();
 
 const DEFAULT_PERIOD = 20;
-
-var ITEMS_MAP = [_]widgets.SearchSelect.Item{
-    .{ .name = "SMA", .is_selected = false },
-    .{ .name = "EMA", .is_selected = false },
-    .{ .name = "Bollinger Bands", .is_selected = false },
-    .{ .name = "Moving average convergence divergence", .is_selected = false },
-};
-
-const ActiveIndicator = struct {
-    item_index: usize,
-    impl: union(enum) {
-        sma: indicators.SMA,
-        ema: indicators.EMA,
-        bollinger_bands: indicators.BollingerBands,
-        macd: *indicators.MACD,
-    },
-
-    fn deinit(self: *ActiveIndicator, allocator: std.mem.Allocator) void {
-        switch (self.impl) {
-            .sma => |*s| s.deinit(allocator),
-            .ema => |*e| e.deinit(allocator),
-            .bollinger_bands => |*b| b.deinit(allocator),
-            .macd => |m| m.region.destroy(allocator),
-        }
-    }
-
-    fn draw(self: *const ActiveIndicator, chart: *const charts.CandleChart) void {
-        switch (self.impl) {
-            .sma => |*s| s.draw(chart),
-            .ema => |*e| e.draw(chart),
-            .bollinger_bands => |*b| b.draw(),
-            .macd => {},
-        }
-    }
-};
 
 is_active: bool = false,
 layout: Layout,
 search_select_widget: widgets.SearchSelect,
 candle_chart: *charts.CandleChart,
 pane_region: *Region,
-active: std.ArrayList(ActiveIndicator),
+active: *ActiveIndicators,
 
 pub fn init(
     allocator: std.mem.Allocator,
     screen_rect: *const rl.Rectangle,
     pane_region: *Region,
-    candle_chart: *charts.CandleChart
+    candle_chart: *charts.CandleChart,
+    active_indicators: *ActiveIndicators
 ) !*Self {
     var self = try allocator.create(Self);
     self.* = .{
         .layout = .empty(screen_rect),
         .pane_region = pane_region,
-        .search_select_widget = try .init(allocator, &ITEMS_MAP, &self.layout),
+        .search_select_widget = try .init(allocator, &ActiveIndicators.ITEMS_MAP, &self.layout),
         .candle_chart = candle_chart,
-        .active = .empty,
+        .active = active_indicators,
     };
 
     self.computeLayout();
@@ -78,72 +46,16 @@ pub fn init(
 }
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
-    for (self.active.items) |*ind| {
-        switch(ind.impl) {
-            .macd => {},
-            else => ind.deinit(allocator)
-        }
-    }
     self.active.deinit(allocator);
     self.search_select_widget.deinit(allocator);
     allocator.destroy(self);
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx, resources: *Resources) !void {
-    for (self.active.items) |*ind| {
-        ind.draw(self.candle_chart);
-    }
+    try self.active.draw(allocator, ctx, resources);
 
     if (self.is_active) {
         try self.search_select_widget.draw(allocator, ctx, resources);
-    }
-}
-
-fn addIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) !void {
-    const candles = self.candle_chart.candles;
-    const impl: @FieldType(ActiveIndicator, "impl") = switch (item_index) {
-        0 => .{ .sma = try indicators.SMA.init(allocator, candles, DEFAULT_PERIOD) },
-        1 => .{ .ema = try indicators.EMA.init(allocator, candles, DEFAULT_PERIOD) },
-        2 => .{ .bollinger_bands = try indicators.BollingerBands.init(allocator, self.candle_chart) },
-        3 => b: {
-            const macd_ind = try indicators.MACD.init(
-                allocator,
-                self.layout.screen_rect,
-                self.candle_chart,
-                if(self.pane_region.child) |child| (
-                    if(child.getLayout()) |l| l
-                    else &self.candle_chart.layout
-                ) else &self.candle_chart.layout
-            );
-            self.pane_region.appendChild(&macd_ind.region);
-            break :b .{ .macd = macd_ind };
-        },
-        else => return,
-    };
-    try self.active.append(allocator, .{ .item_index = item_index, .impl = impl });
-}
-
-fn removeIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) void {
-    var i: usize = 0;
-    while (i < self.active.items.len) {
-        if (self.active.items[i].item_index == item_index) {
-            var ind = self.active.orderedRemove(i);
-            ind.deinit(allocator);
-            break;
-        } else {
-            i += 1;
-        }
-    }
-}
-
-fn toggleIndicator(self: *Self, allocator: std.mem.Allocator, item_index: usize) !void {
-    const item = &ITEMS_MAP[item_index];
-    if (item.is_selected) {
-        self.removeIndicator(allocator, item_index);
-        item.is_selected = false;
-    } else {
-        try self.addIndicator(allocator, item_index);
-        item.is_selected = true;
     }
 }
 
@@ -183,7 +95,7 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.Even
     }
 
     if (self.search_select_widget.handleEvents(ctx)) |item_index| {
-        try self.toggleIndicator(allocator, item_index);
+        try self.active.toggleIndicator(allocator, self.pane_region, item_index);
     }
 
     return;

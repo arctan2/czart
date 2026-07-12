@@ -7,6 +7,7 @@ const PaneLayer = @import("layers/pane_layer.zig");
 const DialogLayer = @import("layers/dialog_layer.zig");
 const ToolsLayer = @import("layers/tools_layer.zig");
 const IndicatorPickerLayer = @import("layers/indicator_picker_layer.zig");
+const ActiveIndicators = @import("active_indicators.zig");
 
 const Self = @This();
 var SCREEN_RECT: rl.Rectangle = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
@@ -23,7 +24,9 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []
     SCREEN_RECT = screen_rect;
 
     const pane_layer: *PaneLayer = try .init(allocator, &SCREEN_RECT, candles);
-    const indicator_picker_layer: *IndicatorPickerLayer = try .init(allocator, &SCREEN_RECT, &pane_layer.region, pane_layer.candle_chart);
+    const indicator_picker_layer: *IndicatorPickerLayer = try .init(
+        allocator, &SCREEN_RECT, &pane_layer.region, pane_layer.candle_chart, pane_layer.active_indicators
+    );
     const dialog_layer: *DialogLayer = try .init(allocator, &SCREEN_RECT, pane_layer.candle_chart);
     const tools_layer: *ToolsLayer = try .init(allocator, &SCREEN_RECT, pane_layer.candle_chart);
 
@@ -32,7 +35,7 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []
         .pane_layer = pane_layer,
         .indicator_picker_layer = indicator_picker_layer,
         .dialog_layer = dialog_layer,
-        .tools_layer = tools_layer
+        .tools_layer = tools_layer,
     };
 }
 

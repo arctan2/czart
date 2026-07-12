@@ -8,6 +8,7 @@ const Resources = @import("resources");
 const Timeframe = common.Timeframe;
 const MinMax = common.MinMax;
 const DateFormatter = common.DateFormatter;
+const ActiveIndicators = @import("../active_indicators.zig");
 const Region = @import("region");
 
 const Self = @This();
@@ -16,8 +17,14 @@ timeframe: Timeframe = .m1,
 layout: *Layout,
 candle_chart: *charts.CandleChart,
 region: Region,
+active_indicators: *ActiveIndicators,
+cur_edit_idx: ?usize = null,
 
-pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, candles: []charts.CandleChart.Candle) !*Self {
+pub fn init(
+    allocator: std.mem.Allocator,
+    screen_rect: *const rl.Rectangle,
+    candles: []charts.CandleChart.Candle,
+) !*Self {
     const self = try allocator.create(Self);
     var candle_chart = try allocator.create(charts.CandleChart);
     candle_chart.* = .init(screen_rect, candles);
@@ -30,7 +37,8 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, cand
             .drawFn = drawRegion,
             .handleEventsFn = handleEventsRegion,
             .destroyFn = deinitRegion,
-        }
+        },
+        .active_indicators = try .init(allocator, candle_chart)
     };
 
     return self;
@@ -41,7 +49,21 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.destroy(self);
 }
 
-fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void {
+fn drawIndicatorLabels(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
+    var row: usize = 0;
+    for(self.active_indicators.list.items, 0..) |ind, idx| {
+        if(try ind.drawLabel(
+            allocator,
+            .{ .x = self.layout.left, .y = self.layout.top + @as(f32, @floatFromInt(row * 16)) },
+            (ctx.focused == @as(*anyopaque, @ptrCast(self))) and (idx == self.cur_edit_idx),
+            resources
+        )) {
+            row += 1;
+        }
+    }
+}
+
+fn draw(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
     rl.drawRectangleV(
         .{ .x = self.layout.left, .y = self.layout.top },
         .{ .x = self.layout.width, .y = self.layout.height },
@@ -54,6 +76,8 @@ fn draw(self: *Self, allocator: std.mem.Allocator, resources: *Resources) !void 
     if(rl.checkCollisionPointRec(rl.getMousePosition(), self.candle_chart.layout.getRect())) {
         try self.candle_chart.drawCrosshair(allocator, self.layout, &self.candle_chart.view.y, resources);
     }
+
+    try self.drawIndicatorLabels(allocator, ctx, resources);
 }
 
 fn scroll(self: *Self, ctx: *Region.EventCtx, change_time_axis: bool) void {
@@ -85,7 +109,14 @@ fn scroll(self: *Self, ctx: *Region.EventCtx, change_time_axis: bool) void {
     }
 }
 
-fn handleEvents(self: *Self, ctx: *Region.EventCtx) void {
+fn isExcludedIdx(idx: isize) bool {
+    return switch(idx) {
+        3 => true,
+        else => false
+    };
+}
+
+fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
     if (ctx.isWheelScroll()) {
         if (ctx.isHorizontalScroll()) {
             const scroll_x_multiplier = self.candle_chart.view.x.range() / 10;
@@ -115,6 +146,37 @@ fn handleEvents(self: *Self, ctx: *Region.EventCtx) void {
             ctx.drag_start_view_y = self.candle_chart.view.y;
         }
     }
+
+    if(ctx.tryFocus(@ptrCast(self), self.layout.getRect())) {
+        if(self.active_indicators.list.items.len == 0) {
+            return;
+        }
+
+        var idx: isize = if (self.cur_edit_idx) |s| @intCast(s) else -1;
+        const is_l_shift_down = rl.isKeyDown(.left_shift);
+        const max_idx: isize = @intCast(self.active_indicators.list.items.len - 1);
+
+        if(is_l_shift_down and rl.isKeyPressed(.up)) {
+            idx -|= 1;
+            while(idx > 0 and isExcludedIdx(idx)) {
+                idx -= 1;
+            }
+        } else if(is_l_shift_down and rl.isKeyPressed(.down)) {
+            idx += 1;
+            while(idx < max_idx and isExcludedIdx(idx)) {
+                idx += 1;
+            }
+        }
+        idx = std.math.clamp(idx, 0, max_idx);
+
+        self.cur_edit_idx = @intCast(idx);
+
+        if(is_l_shift_down) {
+            return;
+        }
+
+        try self.active_indicators.list.items[@intCast(idx)].handleEvents(allocator);
+    }
 }
 
 fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
@@ -132,7 +194,7 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
         }
     }
 
-    self.handleEvents(ctx);
+    try self.handleEvents(allocator, ctx);
 
     if (rl.isKeyPressed(.r)) {
         var mm = charts.CandleChart.calcMinMax(self.candle_chart.candles);
@@ -143,9 +205,9 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
     }
 }
 
-fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, _: *Region.EventCtx, resources: *Resources) !void {
+fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
-    try self.draw(allocator, resources);
+    try self.draw(allocator, ctx, resources);
 }
 
 fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {

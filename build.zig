@@ -13,6 +13,13 @@ pub fn build(b: *std.Build) void {
     const raygui = raylib_dep.module("raygui");
     const raylib_artifact = raylib_dep.artifact("raylib");
 
+    const defaults = b.createModule(.{
+        .root_source_file = b.path("src/defaults.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{},
+    });
+
     const common = b.createModule(.{
         .root_source_file = b.path("src/common.zig"),
         .target = target,
@@ -76,6 +83,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "layout", .module = layout },
             .{ .name = "raylib", .module = raylib },
             .{ .name = "resources", .module = resources },
+            .{ .name = "defaults", .module = defaults },
         },
     });
 
@@ -92,6 +100,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "widgets", .module = widgets },
             .{ .name = "raygui", .module = raygui },
             .{ .name = "region", .module = region },
+            .{ .name = "defaults", .module = defaults },
         },
     });
 
@@ -111,6 +120,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "region", .module = region },
                 .{ .name = "raygui", .module = raygui },
                 .{ .name = "widgets", .module = widgets },
+                .{ .name = "defaults", .module = defaults },
             },
         }),
     });
