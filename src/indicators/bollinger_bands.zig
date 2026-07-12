@@ -155,6 +155,19 @@ pub fn draw(self: *const Self) void {
     self.drawLine(self.lower, self.period - 1, .blue);
 }
 
+fn hoveredValues(self: *const Self) ?struct { sma: f32, upper: f32, lower: f32 } {
+    const chart = self.candle_chart;
+    if (self.sma.len == 0) return null;
+
+    const idx = chart.getClosestCandleIdx(rl.getMousePosition().x);
+    if (idx < @as(f32, @floatFromInt(self.period - 1))) return null;
+
+    const point_idx: usize = @intFromFloat(idx - @as(f32, @floatFromInt(self.period - 1)));
+    if (point_idx >= self.sma.len) return null;
+
+    return .{ .sma = self.sma[point_idx], .upper = self.upper[point_idx], .lower = self.lower[point_idx] };
+}
+
 pub fn drawLabel(
     self: *const Self,
     allocator: std.mem.Allocator,
@@ -168,6 +181,24 @@ pub fn drawLabel(
     );
     defer allocator.free(text);
     rl.drawTextEx(resources.font, text, start, font_size, 1, .white);
+
+    var value_x = start.x + resources.measureText(text, font_size, 1).x + 8;
+    if (self.hoveredValues()) |v| {
+        var sma_buf: [16]u8 = undefined;
+        var upper_buf: [16]u8 = undefined;
+        var lower_buf: [16]u8 = undefined;
+
+        const sma_text = std.fmt.bufPrintZ(&sma_buf, "{d:.2}", .{v.sma}) catch return true;
+        rl.drawTextEx(resources.font, sma_text, .{ .x = value_x, .y = start.y }, font_size, 1, .white);
+        value_x += resources.measureText(sma_text, font_size, 1).x + 8;
+
+        const upper_text = std.fmt.bufPrintZ(&upper_buf, "{d:.2}", .{v.upper}) catch return true;
+        rl.drawTextEx(resources.font, upper_text, .{ .x = value_x, .y = start.y }, font_size, 1, .purple);
+        value_x += resources.measureText(upper_text, font_size, 1).x + 8;
+
+        const lower_text = std.fmt.bufPrintZ(&lower_buf, "{d:.2}", .{v.lower}) catch return true;
+        rl.drawTextEx(resources.font, lower_text, .{ .x = value_x, .y = start.y }, font_size, 1, .blue);
+    }
 
     if(!is_focused) return true;
 

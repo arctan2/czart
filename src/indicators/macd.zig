@@ -284,6 +284,22 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
     }
 }
 
+fn hoveredValues(self: *const Self) ?struct { macd: f32, signal: f32, hist: f32 } {
+    if (self.signal_y_points.len == 0) return null;
+
+    const offset = self.signal_len + self.slow_len - 1;
+    const idx = self.candle_chart.getClosestCandleIdx(rl.getMousePosition().x);
+    if (idx < @as(f32, @floatFromInt(offset))) return null;
+
+    const i: usize = @intFromFloat(idx - @as(f32, @floatFromInt(offset)));
+    if (i >= self.signal_y_points.len) return null;
+
+    const macd_val = self.macd_y_points[self.signal_len + i];
+    const signal_val = self.signal_y_points[i];
+
+    return .{ .macd = macd_val, .signal = signal_val, .hist = macd_val - signal_val };
+}
+
 pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
     const pad = 10;
     const top = self.layout.top + pad;
@@ -294,6 +310,31 @@ pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Re
         allocator, "MACD", .{ self.fast_len, self.slow_len, self.signal_len },
         .{ .x = left, .y = top }, resources, is_focused
     );
+
+    if (self.hoveredValues()) |v| {
+        const font_size = defaults.INDICATOR_FONT_SIZE;
+        const prefix_text = try std.fmt.allocPrintSentinel(
+            allocator, "MACD({d}, {d}, {d})", .{ self.fast_len, self.slow_len, self.signal_len }, 0
+        );
+        defer allocator.free(prefix_text);
+        var value_x = left + resources.measureText(prefix_text, font_size, 1).x + 8;
+
+        var macd_buf: [16]u8 = undefined;
+        var signal_buf: [16]u8 = undefined;
+        var hist_buf: [16]u8 = undefined;
+
+        const macd_text = std.fmt.bufPrintZ(&macd_buf, "{d:.4}", .{v.macd}) catch return;
+        rl.drawTextEx(resources.font, macd_text, .{ .x = value_x, .y = top }, font_size, 1, .{ .r = 255, .g = 255, .b = 0, .a = 255 });
+        value_x += resources.measureText(macd_text, font_size, 1).x + 8;
+
+        const signal_text = std.fmt.bufPrintZ(&signal_buf, "{d:.4}", .{v.signal}) catch return;
+        rl.drawTextEx(resources.font, signal_text, .{ .x = value_x, .y = top }, font_size, 1, .{ .r = 255, .g = 0, .b = 255, .a = 255 });
+        value_x += resources.measureText(signal_text, font_size, 1).x + 8;
+
+        const hist_text = std.fmt.bufPrintZ(&hist_buf, "{d:.4}", .{v.hist}) catch return;
+        const hist_color = if (v.hist > 0) rl.Color.green else rl.Color.red;
+        rl.drawTextEx(resources.font, hist_text, .{ .x = value_x, .y = top }, font_size, 1, hist_color);
+    }
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {

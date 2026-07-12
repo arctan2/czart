@@ -10,8 +10,12 @@ const MinMax = common.MinMax;
 const DateFormatter = common.DateFormatter;
 const ActiveIndicators = @import("../active_indicators.zig");
 const Region = @import("region");
+const defaults = @import("defaults");
 
 const Self = @This();
+
+const INDICATOR_LABEL_GAP = 10;
+const INDICATOR_LABEL_PAD = 20;
 
 timeframe: Timeframe = .m1,
 layout: *Layout,
@@ -52,12 +56,18 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
 fn drawIndicatorLabels(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {
     var row: usize = 0;
     for(self.active_indicators.list.items, 0..) |ind, idx| {
-        if(try ind.drawLabel(
+        const y = (defaults.INDICATOR_FONT_SIZE + INDICATOR_LABEL_GAP) * @as(f32, @floatFromInt(row));
+        const is_drawn = try ind.drawLabel(
             allocator,
-            .{ .x = self.layout.left, .y = self.layout.top + @as(f32, @floatFromInt(row * 16)) },
+            .{
+                .x = self.layout.left + INDICATOR_LABEL_PAD,
+                .y = INDICATOR_LABEL_PAD + self.layout.top + y
+            },
             (ctx.focused == @as(*anyopaque, @ptrCast(self))) and (idx == self.cur_edit_idx),
             resources
-        )) {
+        );
+
+        if(is_drawn) {
             row += 1;
         }
     }
@@ -109,10 +119,13 @@ fn scroll(self: *Self, ctx: *Region.EventCtx, change_time_axis: bool) void {
     }
 }
 
-fn isExcludedIdx(idx: isize) bool {
-    return switch(idx) {
-        3 => true,
-        else => false
+fn isExcludedIdx(self: *const Self, idx: isize) bool {
+    if (idx < 0 or idx >= @as(isize, @intCast(self.active_indicators.list.items.len))) {
+        return false;
+    }
+    return switch (self.active_indicators.list.items[@intCast(idx)].impl) {
+        .macd => true,
+        else => false,
     };
 }
 
@@ -157,13 +170,13 @@ fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx
         const max_idx: isize = @intCast(self.active_indicators.list.items.len - 1);
 
         if(is_l_shift_down and rl.isKeyPressed(.up)) {
-            idx -|= 1;
-            while(idx > 0 and isExcludedIdx(idx)) {
+            idx -= 1;
+            while(idx >= 0 and self.isExcludedIdx(idx)) {
                 idx -= 1;
             }
         } else if(is_l_shift_down and rl.isKeyPressed(.down)) {
             idx += 1;
-            while(idx < max_idx and isExcludedIdx(idx)) {
+            while(idx <= max_idx and self.isExcludedIdx(idx)) {
                 idx += 1;
             }
         }

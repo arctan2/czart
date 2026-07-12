@@ -67,6 +67,19 @@ pub fn draw(self: *const Self, chart: *const charts.CandleChart) void {
     charts.LineChart.draw(&chart.layout, self.points, .{ .r = 0, .g = 150, .b = 255, .a = 255 });
 }
 
+fn hoveredValue(self: *const Self) ?f32 {
+    const chart = self.candle_chart;
+    if (self.points.len == 0) return null;
+
+    const idx = chart.getClosestCandleIdx(rl.getMousePosition().x);
+    if (idx < @as(f32, @floatFromInt(self.period - 1))) return null;
+
+    const point_idx: usize = @intFromFloat(idx - @as(f32, @floatFromInt(self.period - 1)));
+    if (point_idx >= self.points.len) return null;
+
+    return charts.CandleChart.screenToViewY(&chart.layout, &chart.view.y, self.points[point_idx].y);
+}
+
 pub fn drawLabel(
     self: *const Self,
     allocator: std.mem.Allocator,
@@ -75,6 +88,23 @@ pub fn drawLabel(
     resources: *Resources,
 ) !bool {
     try self.editor.drawLabel(allocator, "EMA", .{ self.period }, start, resources, is_focused);
+
+    if (self.hoveredValue()) |value| {
+        const font_size = defaults.INDICATOR_FONT_SIZE;
+        var text_buf: [16]u8 = undefined;
+        const prefix_text = try std.fmt.allocPrintSentinel(allocator, "EMA({d})", .{self.period}, 0);
+        defer allocator.free(prefix_text);
+        const prefix_w = resources.measureText(prefix_text, font_size, 1).x;
+        const text = std.fmt.bufPrintZ(&text_buf, "{d:.2}", .{value}) catch return true;
+        rl.drawTextEx(
+            resources.font,
+            text,
+            .{ .x = start.x + prefix_w + 8, .y = start.y },
+            font_size, 1,
+            .{ .r = 0, .g = 150, .b = 255, .a = 255 },
+        );
+    }
+
     return true;
 }
 
