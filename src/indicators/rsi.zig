@@ -45,8 +45,8 @@ pub fn init(
             .ptr = @ptrCast(self),
             .drawFn = drawRegion,
             .handleEventsFn = handleEventsRegion,
-            .destroyFn = deinitRegion,
-            .getLayoutFn = getLayoutFnRegion
+            .getLayoutFn = getLayoutFnRegion,
+            .destroyFn = deinitRegion
         },
         .candle_chart = candle_chart,
         .view_y = .{ .max = 2, .min = -2 },
@@ -75,12 +75,14 @@ fn computeLayout(self: *Self) void {
 
 pub fn compute(self: *Self) void {
     self.computeLayout();
-    self.computeMACD();
+    self.computeRSI();
     self.computeMinMaxY();
 }
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
-    if(self.getAboveLayout()) |above_layout| {
+    const above: *Region = if(self.region.getPrevSib()) |sib| sib else self.region.parent.?;
+
+    if(above.getLayout()) |above_layout| {
         above_layout.height += self.layout.height;
     }
     allocator.free(self.macd_y_points);
@@ -118,7 +120,7 @@ pub fn reallocBuffers(self: *Self, allocator: std.mem.Allocator) !void {
     self.signal_y_points = try allocator.alloc(f32, (self.candle_chart.candles.len - (self.slow_len + self.signal_len)) + 1);
 }
 
-fn computeMACD(self: *const Self) void {
+fn computeRSI(self: *const Self) void {
     if (self.candle_chart.candles.len < self.slow_len) return;
 
     var sum_fast: f32 = 0;
@@ -315,14 +317,14 @@ pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Re
     const is_focused = ctx.focused != null and ctx.focused.? == @as(*anyopaque, @ptrCast(self));
 
     try self.editor.drawLabel(
-        allocator, "MACD", .{ self.fast_len, self.slow_len, self.signal_len },
+        allocator, "RSI", .{ self.fast_len, self.slow_len, self.signal_len },
         .{ .x = left, .y = top }, resources, is_focused
     );
 
     if (self.hoveredValues()) |v| {
         const font_size = defaults.INDICATOR_FONT_SIZE;
         const prefix_text = try std.fmt.allocPrintSentinel(
-            allocator, "MACD({d}, {d}, {d})", .{ self.fast_len, self.slow_len, self.signal_len }, 0
+            allocator, "RSI({d}, {d}, {d})", .{ self.fast_len, self.slow_len, self.signal_len }, 0
         );
         defer allocator.free(prefix_text);
         var value_x = left + resources.measureText(prefix_text, font_size, 1).x + 8;
@@ -448,7 +450,7 @@ fn handleKeyEvents(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx) !v
 
     if (changed) {
         try self.reallocBuffers(allocator);
-        self.computeMACD();
+        self.computeRSI();
     }
 }
 
@@ -475,14 +477,14 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Event
     self.handleEvents(ctx);
 }
 
-fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *EventCtx, resources: *Resources) !void {
-    const self: *Self = @alignCast(@ptrCast(ptr));
-    try self.draw(allocator, resources, ctx);
-}
-
 fn getLayoutFnRegion(ptr: *anyopaque) ?*Layout {
     const self: *Self = @alignCast(@ptrCast(ptr));
     return &self.layout;
+}
+
+fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *EventCtx, resources: *Resources) !void {
+    const self: *Self = @alignCast(@ptrCast(ptr));
+    try self.draw(allocator, resources, ctx);
 }
 
 fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {

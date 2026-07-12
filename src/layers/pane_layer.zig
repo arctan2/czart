@@ -40,6 +40,7 @@ pub fn init(
             .ptr = @ptrCast(self),
             .drawFn = drawRegion,
             .handleEventsFn = handleEventsRegion,
+            .getLayoutFn = getLayoutFnRegion,
             .destroyFn = deinitRegion,
         },
         .active_indicators = try .init(allocator, candle_chart)
@@ -216,6 +217,11 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Regio
         self.candle_chart.view.y = mm.y;
         self.candle_chart.view.x = mm.x;
     }
+}
+
+fn getLayoutFnRegion(ptr: *anyopaque) ?*Layout {
+    const self: *Self = @alignCast(@ptrCast(ptr));
+    return self.layout;
 }
 
 fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx, resources: *Resources) !void {

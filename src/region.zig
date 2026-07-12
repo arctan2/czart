@@ -102,24 +102,21 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator, event_ctx: *Event
     return try self.handleEventsFn(self.ptr, allocator, event_ctx);
 }
 
-pub fn detachChild(self: *Self, child: *Self) void {
+pub fn detachChild(self: *Self, child: *Self, child_sib: ?*Self) void {
     if (self.child == null) return;
 
     if (self.child.? == child) {
-        self.child = child.sib;
+        self.child = child_sib;
     } else {
         var cur = self.child.?;
         while (cur.sib) |next| {
             if (next == child) {
-                cur.sib = child.sib;
+                cur.sib = child_sib;
                 break;
             }
             cur = next;
         }
     }
-
-    child.parent = null;
-    child.sib = null;
 }
 
 pub fn childWillDestroy(self: *Self, child: *Self) void {
@@ -127,32 +124,24 @@ pub fn childWillDestroy(self: *Self, child: *Self) void {
 }
 
 pub fn destroy(self: *Self, allocator: std.mem.Allocator) void {
-    if(self.parent) |p| {
-        p.childWillDestroy(self);
-        p.detachChild(self);
-    }
-
     while (self.child) |child| {
         self.child = child.sib;
-
-        child.parent = null;
-        child.sib = null;
-
         child.destroy(allocator);
     }
 
-    if (self.sib) |sib| {
-        sib.destroy(allocator);
-    }
+    const parent = self.parent;
+    const sib = self.sib;
 
+    if(parent) |p| p.childWillDestroy(self);
     self.destroyFn(self.ptr, allocator);
+    if(parent) |p| p.detachChild(self, sib);
 }
 
 pub fn getPrevSib(self: *Self) ?*Self {
     if(self.parent) |parent| {
         if(parent.child == self) return null;
 
-        var cur = self.child;
+        var cur = parent.child;
         while(cur) |c| {
             if(c.sib == self) return c;
             cur = c.sib;

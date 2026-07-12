@@ -19,6 +19,7 @@ pub var ITEMS_MAP = [_]widgets.SearchSelect.Item{
     .{ .name = "EMA", .is_selected = false },
     .{ .name = "Bollinger Bands", .is_selected = false },
     .{ .name = "Moving average convergence divergence", .is_selected = false },
+    .{ .name = "Relative Strength Index", .is_selected = false },
 };
 
 pub const ActiveIndicator = struct {
@@ -28,6 +29,7 @@ pub const ActiveIndicator = struct {
         ema: indicators.EMA,
         bollinger_bands: indicators.BollingerBands,
         macd: *indicators.MACD,
+        rsi: *indicators.RSI,
     },
 
     pub fn deinit(self: *ActiveIndicator, allocator: std.mem.Allocator) void {
@@ -36,6 +38,7 @@ pub const ActiveIndicator = struct {
             .ema => |*e| e.deinit(allocator),
             .bollinger_bands => |*b| b.deinit(allocator),
             .macd => |m| m.region.destroy(allocator),
+            .rsi => |r| r.region.destroy(allocator),
         }
     }
 
@@ -45,6 +48,7 @@ pub const ActiveIndicator = struct {
             .ema => |*e| e.draw(chart),
             .bollinger_bands => |*b| b.draw(),
             .macd => {},
+            .rsi => {},
         }
     }
 
@@ -59,7 +63,7 @@ pub const ActiveIndicator = struct {
             .sma => |*s| try s.drawLabel(allocator, start, is_focused, resources),
             .ema => |*e| try e.drawLabel(allocator, start, is_focused, resources),
             .bollinger_bands => |*b| try b.drawLabel(allocator, start, is_focused, resources),
-            .macd => false,
+            .macd, .rsi => false,
         };
     }
 
@@ -68,7 +72,7 @@ pub const ActiveIndicator = struct {
             .sma => |*s| try s.handleEvents(allocator),
             .ema => |*e| try e.handleEvents(allocator),
             .bollinger_bands => |*b| try b.handleEvents(allocator),
-            .macd => {},
+            .macd, .rsi => {},
         }
     }
 };
@@ -109,16 +113,16 @@ fn addIndicator(self: *Self, allocator: std.mem.Allocator, pane_region: *Region,
         1 => .{ .ema = try indicators.EMA.init(allocator, self.candle_chart, DEFAULT_PERIOD) },
         2 => .{ .bollinger_bands = try indicators.BollingerBands.init(allocator, self.candle_chart) },
         3 => b: {
-            const macd_ind = try indicators.MACD.init(
-                allocator,
-                self.candle_chart,
-                if(pane_region.child) |child| (
-                    if(child.getLayout()) |l| l
-                    else &self.candle_chart.layout
-                ) else &self.candle_chart.layout
-            );
+            const macd_ind = try indicators.MACD.init(allocator, self.candle_chart);
             pane_region.appendChild(&macd_ind.region);
+            macd_ind.compute();
             break :b .{ .macd = macd_ind };
+        },
+        4 => b: {
+            const rsi_ind = try indicators.RSI.init(allocator, self.candle_chart);
+            pane_region.appendChild(&rsi_ind.region);
+            rsi_ind.compute();
+            break :b .{ .rsi = rsi_ind };
         },
         else => return,
     };
