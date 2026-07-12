@@ -8,15 +8,12 @@ const common = @import("common");
 const defaults = @import("defaults");
 const EventCtx = Region.EventCtx;
 const MinMax = common.MinMax;
-const ParamEditor = @import("param_editor.zig").ParamEditor(3);
+const ParamEditor = @import("param_editor.zig").ParamEditor(1);
 
 const Self = @This();
-const DEFAULT_FAST_LEN: usize = 12;
-const DEFAULT_SLOW_LEN: usize = 26;
-const DEFAULT_SIGNAL_LEN: usize = 9;
+const DEFAULT_PERIOD: usize = 14;
 
-macd_y_points: []f32,
-signal_y_points: []f32,
+points: []f32,
 layout: Layout,
 region: Region,
 candle_chart: *charts.CandleChart,
@@ -26,9 +23,7 @@ drag_start_top: f32 = 0,
 drag_start_height: f32 = 0,
 drag_start_above_height: f32 = 0,
 
-slow_len: usize = DEFAULT_SLOW_LEN,
-fast_len: usize = DEFAULT_FAST_LEN,
-signal_len: usize = DEFAULT_SIGNAL_LEN,
+period: usize = DEFAULT_PERIOD,
 
 editor: ParamEditor = .{},
 
@@ -38,8 +33,7 @@ pub fn init(
 ) !*Self {
     const self = try allocator.create(Self);
     self.* = .{
-        .macd_y_points = try allocator.alloc(f32, (candle_chart.candles.len - DEFAULT_SLOW_LEN) + 1),
-        .signal_y_points = try allocator.alloc(f32, (candle_chart.candles.len - (DEFAULT_SLOW_LEN + DEFAULT_SIGNAL_LEN)) + 1),
+        .points = try allocator.alloc(f32, (candle_chart.candles.len - DEFAULT_PERIOD) + 1),
         .layout = .empty(candle_chart.layout.screen_rect),
         .region = .{
             .ptr = @ptrCast(self),
@@ -50,9 +44,7 @@ pub fn init(
         },
         .candle_chart = candle_chart,
         .view_y = .{ .max = 2, .min = -2 },
-        .slow_len = DEFAULT_SLOW_LEN,
-        .fast_len = DEFAULT_FAST_LEN,
-        .signal_len = DEFAULT_SIGNAL_LEN,
+        .period = DEFAULT_PERIOD,
     };
 
     return self;
@@ -85,8 +77,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     if(above.getLayout()) |above_layout| {
         above_layout.height += self.layout.height;
     }
-    allocator.free(self.macd_y_points);
-    allocator.free(self.signal_y_points);
+    allocator.free(self.points);
     allocator.destroy(self);
 }
 
@@ -94,9 +85,9 @@ fn computeMinMaxY(self: *Self) void {
     var min: f32 = std.math.inf(f32);
     var max: f32 = 0;
 
-    for(0..self.signal_y_points.len) |i| {
-        min = @min(min, self.macd_y_points[i + self.signal_len], self.signal_y_points[i]);
-        max = @max(max, self.macd_y_points[i + self.signal_len], self.signal_y_points[i]);
+    for(0..self.points.len) |i| {
+        min = @min(min, self.points[i]);
+        max = @max(max, self.points[i]);
     }
 
     self.view_y.max = max;
@@ -114,57 +105,32 @@ pub fn toViewY(self: *Self, y: f32) f32 {
 }
 
 pub fn reallocBuffers(self: *Self, allocator: std.mem.Allocator) !void {
-    allocator.free(self.macd_y_points);
-    allocator.free(self.signal_y_points);
-    self.macd_y_points = try allocator.alloc(f32, (self.candle_chart.candles.len - self.slow_len) + 1);
-    self.signal_y_points = try allocator.alloc(f32, (self.candle_chart.candles.len - (self.slow_len + self.signal_len)) + 1);
+    self.points = try allocator.realloc(self.points, (self.candle_chart.candles.len - self.period) + 1);
 }
 
 fn computeRSI(self: *const Self) void {
-    if (self.candle_chart.candles.len < self.slow_len) return;
+    if (self.candle_chart.candles.len < self.period) return;
 
-    var sum_fast: f32 = 0;
-    var sum_slow: f32 = 0;
+    const period: f32 = @floatFromInt(self.period);
 
-    for (self.candle_chart.candles[self.fast_len..(self.fast_len * 2)]) |candle| sum_fast += candle.close;
-    for (self.candle_chart.candles[0..self.slow_len]) |candle| sum_slow += candle.close;
+    var sum_gain: f32 = 0;
+    var sum_loss: f32 = 0;
 
-    var prev_ema_fast = sum_fast / @as(f32, @floatFromInt(self.fast_len));
-    var prev_ema_slow = sum_slow / @as(f32, @floatFromInt(self.slow_len));
-
-    const M_FAST: f32 = 2.0 / @as(f32, @floatFromInt(self.fast_len + 1));
-    const M_SLOW: f32 = 2.0 / @as(f32, @floatFromInt(self.slow_len + 1));
-
-    for (self.fast_len..self.slow_len) |i| {
-        const candle = self.candle_chart.candles[i];
-        const ema_fast = (candle.close * M_FAST) + (prev_ema_fast * (1 - M_FAST));
-        prev_ema_fast = ema_fast;
+    for (1..self.period) |i| {
+        const diff = self.candle_chart.candles[i].close - self.candle_chart.candles[i - 1].close;
+        (if(diff > 0) sum_gain else sum_loss) += @abs(diff);
     }
 
-    for (self.slow_len..self.candle_chart.candles.len) |i| {
-        const candle = self.candle_chart.candles[i];
-        const ema_fast = (candle.close * M_FAST) + (prev_ema_fast * (1 - M_FAST));
-        const ema_slow = (candle.close * M_SLOW) + (prev_ema_slow * (1 - M_SLOW));
-        prev_ema_fast = ema_fast;
-        prev_ema_slow = ema_slow;
+    var avg_gain = sum_gain / period;
+    var avg_loss = sum_loss / period;
 
-        const diff_ema_fast_26 = ema_fast - ema_slow;
+    self.points[0] = 100 - (100 / (1 + (avg_gain / avg_loss)));
 
-        self.macd_y_points[i - self.slow_len] = diff_ema_fast_26;
-    }
-
-    var sum: f32 = 0;
-
-    for (self.macd_y_points[0..self.signal_len]) |p| {
-        sum += p;
-    }
-
-    self.signal_y_points[0] = sum / @as(f32, @floatFromInt(self.signal_len));
-
-    for (self.signal_len..(self.macd_y_points.len - self.signal_len)) |i| {
-        sum += self.macd_y_points[i];
-        sum -= self.macd_y_points[i - self.signal_len];
-        self.signal_y_points[(i - self.signal_len) + 1] = sum / @as(f32, @floatFromInt(self.signal_len));
+    for (self.period..self.candle_chart.candles.len) |i| {
+        const diff = self.candle_chart.candles[i].close - self.candle_chart.candles[i - 1].close;
+        const t = if(diff > 0) avg_gain else avg_loss;
+        (if(diff > 0) avg_gain else avg_loss) = (t * (period - 1) + @abs(diff)) / period;
+        self.points[i - self.period + 1] = 100 - (100 / (1 + (avg_gain / avg_loss)));
     }
 }
 
@@ -242,72 +208,17 @@ fn drawLineChart(self: *Self, points: []f32, color: rl.Color, start_idx: usize) 
     }
 }
 
-fn drawHistogram(self: *Self, start_idx: usize) void {
-    std.debug.assert(self.macd_y_points.len > 1);
-    std.debug.assert(self.macd_y_points.len == self.signal_y_points.len + self.signal_len);
+fn hoveredValue(self: *const Self) ?f32 {
+    if (self.points.len == 0) return null;
 
-    rl.beginScissorMode(
-        @intFromFloat(self.layout.left),
-        @intFromFloat(self.layout.top),
-        @intFromFloat(self.layout.width),
-        @intFromFloat(self.layout.height),
-    );
-    defer rl.endScissorMode();
-
-    const macd_y_points = self.macd_y_points[self.signal_len..];
-    const signal_y_points = self.signal_y_points;
-
-    var i, const end = self.candle_chart.viewXCulling(start_idx, signal_y_points.len);
-    const slot_px = self.layout.width / self.candle_chart.view.x.range();
-    const w = slot_px * 0.8;
-    const zero_screen_y = self.toScreenY(0.0);
-
-    var prev_diff: ?f32 = null;
-
-    while(i < end) : (i += 1) {
-        const diff = macd_y_points[i] - signal_y_points[i];
-
-        const idx: f32 = @floatFromInt(i + start_idx);
-        const sx = self.candle_chart.indexToScreenX(idx) - w / 2.0;
-
-        if (sx + w < self.layout.left) continue;
-        if (sx > self.layout.right()) continue;
-
-        const val_screen_y = self.toScreenY(diff);
-
-        const body_top = @min(zero_screen_y, val_screen_y);
-        const body_height = @abs(zero_screen_y - val_screen_y);
-
-        var c = if (diff > 0) rl.Color.green else rl.Color.red;
-
-        if(prev_diff) |p| {
-            if(@abs(diff) < @abs(p)) {
-                c.r -|= 100;
-                c.g -|= 100;
-                c.b -|= 100;
-            }
-        }
-
-        prev_diff = diff;
-
-        rl.drawRectangleV(.{ .x = sx, .y = body_top }, .{ .x = w, .y = body_height }, c);
-    }
-}
-
-fn hoveredValues(self: *const Self) ?struct { macd: f32, signal: f32, hist: f32 } {
-    if (self.signal_y_points.len == 0) return null;
-
-    const offset = self.signal_len + self.slow_len - 1;
+    const offset = self.period;
     const idx = self.candle_chart.getClosestCandleIdx(rl.getMousePosition().x);
     if (idx < @as(f32, @floatFromInt(offset))) return null;
 
     const i: usize = @intFromFloat(idx - @as(f32, @floatFromInt(offset)));
-    if (i >= self.signal_y_points.len) return null;
+    if (i >= self.points.len) return null;
 
-    const macd_val = self.macd_y_points[self.signal_len + i];
-    const signal_val = self.signal_y_points[i];
-
-    return .{ .macd = macd_val, .signal = signal_val, .hist = macd_val - signal_val };
+    return self.points[i];
 }
 
 pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
@@ -316,43 +227,28 @@ pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Re
     const left = self.layout.left + pad;
     const is_focused = ctx.focused != null and ctx.focused.? == @as(*anyopaque, @ptrCast(self));
 
-    try self.editor.drawLabel(
-        allocator, "RSI", .{ self.fast_len, self.slow_len, self.signal_len },
-        .{ .x = left, .y = top }, resources, is_focused
-    );
+    try self.editor.drawLabel(allocator, "RSI", .{ self.period }, .{ .x = left, .y = top }, resources, is_focused);
 
-    if (self.hoveredValues()) |v| {
+    if (self.hoveredValue()) |value| {
         const font_size = defaults.INDICATOR_FONT_SIZE;
-        const prefix_text = try std.fmt.allocPrintSentinel(
-            allocator, "RSI({d}, {d}, {d})", .{ self.fast_len, self.slow_len, self.signal_len }, 0
-        );
+        const prefix_text = try std.fmt.allocPrintSentinel(allocator, "RSI({d})", .{self.period}, 0);
         defer allocator.free(prefix_text);
-        var value_x = left + resources.measureText(prefix_text, font_size, 1).x + 8;
-
-        var macd_buf: [16]u8 = undefined;
-        var signal_buf: [16]u8 = undefined;
-        var hist_buf: [16]u8 = undefined;
-
-        const macd_text = std.fmt.bufPrintZ(&macd_buf, "{d:.4}", .{v.macd}) catch return;
-        rl.drawTextEx(resources.font, macd_text, .{ .x = value_x, .y = top }, font_size, 1, .{ .r = 255, .g = 255, .b = 0, .a = 255 });
-        value_x += resources.measureText(macd_text, font_size, 1).x + 8;
-
-        const signal_text = std.fmt.bufPrintZ(&signal_buf, "{d:.4}", .{v.signal}) catch return;
-        rl.drawTextEx(resources.font, signal_text, .{ .x = value_x, .y = top }, font_size, 1, .{ .r = 255, .g = 0, .b = 255, .a = 255 });
-        value_x += resources.measureText(signal_text, font_size, 1).x + 8;
-
-        const hist_text = std.fmt.bufPrintZ(&hist_buf, "{d:.4}", .{v.hist}) catch return;
-        const hist_color = if (v.hist > 0) rl.Color.green else rl.Color.red;
-        rl.drawTextEx(resources.font, hist_text, .{ .x = value_x, .y = top }, font_size, 1, hist_color);
+        const prefix_w = resources.measureText(prefix_text, font_size, 1).x;
+        const text = try std.fmt.allocPrintSentinel(allocator, "{d:.2}", .{value}, 0);
+        defer allocator.free(text);
+        rl.drawTextEx(
+            resources.font,
+            text,
+            .{ .x = left + prefix_w + 8, .y = top },
+            font_size, 1,
+            .{ .r = 0, .g = 150, .b = 255, .a = 255 },
+        );
     }
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
-    const offset = self.signal_len + self.slow_len - 1;
+    self.drawLineChart(self.points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, self.period);
     self.drawYAxis(resources);
-    self.drawHistogram(offset);
-    self.drawLineChart(self.macd_y_points[self.signal_len..], .{ .r = 255, .g = 255, .b = 0, .a = 255 }, offset);
-    self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, offset);
     try self.drawLabel(allocator, resources, ctx);
 
     const is_on_divider = rl.checkCollisionPointLine(
@@ -438,15 +334,13 @@ fn handleEvents(self: *Self, ctx: *EventCtx) void {
 fn handleKeyEvents(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
     if(ctx.focused != @as(*anyopaque, @ptrCast(self))) return;
 
-    var params = [3]usize{ self.fast_len, self.slow_len, self.signal_len };
+    var params = [1]usize{ self.period };
     const changed = self.editor.handleKeyEvent(
         &params,
-        .{ 1, self.fast_len, 1 },
-        .{ self.slow_len, defaults.MAX_PERIOD, defaults.MAX_PERIOD },
+        .{ 1 },
+        .{ defaults.MAX_PERIOD },
     );
-    self.fast_len = params[0];
-    self.slow_len = params[1];
-    self.signal_len = params[2];
+    self.period = params[0];
 
     if (changed) {
         try self.reallocBuffers(allocator);

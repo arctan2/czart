@@ -87,11 +87,11 @@ pub fn drawLabel(
 
     if (self.hoveredValue()) |value| {
         const font_size = defaults.INDICATOR_FONT_SIZE;
-        var text_buf: [16]u8 = undefined;
         const prefix_text = try std.fmt.allocPrintSentinel(allocator, "SMA({d})", .{self.period}, 0);
         defer allocator.free(prefix_text);
         const prefix_w = resources.measureText(prefix_text, font_size, 1).x;
-        const text = std.fmt.bufPrintZ(&text_buf, "{d:.2}", .{value}) catch return true;
+        const text = try std.fmt.allocPrintSentinel(allocator, "{d:.2}", .{value}, 0);
+        defer allocator.free(text);
         rl.drawTextEx(
             resources.font,
             text,
