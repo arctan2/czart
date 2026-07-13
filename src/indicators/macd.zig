@@ -14,6 +14,10 @@ const Self = @This();
 const DEFAULT_FAST_LEN: usize = 12;
 const DEFAULT_SLOW_LEN: usize = 26;
 const DEFAULT_SIGNAL_LEN: usize = 9;
+const MACD_LINE_COLOR: rl.Color = .{ .r = 255, .g = 255, .b = 0, .a = 255 };
+const SIGNAL_LINE_COLOR: rl.Color = .{ .r = 255, .g = 0, .b = 255, .a = 255 };
+const HIST_POSITIVE_COLOR: rl.Color = .green;
+const HIST_NEGATIVE_COLOR: rl.Color = .red;
 
 macd_y_points: []f32,
 signal_y_points: []f32,
@@ -276,7 +280,7 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
         const body_top = @min(zero_screen_y, val_screen_y);
         const body_height = @abs(zero_screen_y - val_screen_y);
 
-        var c = if (diff > 0) rl.Color.green else rl.Color.red;
+        var c = if (diff > 0) HIST_POSITIVE_COLOR else HIST_NEGATIVE_COLOR;
 
         if(prev_diff) |p| {
             if(@abs(diff) < @abs(p)) {
@@ -332,15 +336,15 @@ pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Re
         var hist_buf: [16]u8 = undefined;
 
         const macd_text = std.fmt.bufPrintZ(&macd_buf, "{d:.4}", .{v.macd}) catch return;
-        rl.drawTextEx(resources.font, macd_text, .{ .x = value_x, .y = top }, font_size, 1, .{ .r = 255, .g = 255, .b = 0, .a = 255 });
+        rl.drawTextEx(resources.font, macd_text, .{ .x = value_x, .y = top }, font_size, 1, MACD_LINE_COLOR);
         value_x += resources.measureText(macd_text, font_size, 1).x + 8;
 
         const signal_text = std.fmt.bufPrintZ(&signal_buf, "{d:.4}", .{v.signal}) catch return;
-        rl.drawTextEx(resources.font, signal_text, .{ .x = value_x, .y = top }, font_size, 1, .{ .r = 255, .g = 0, .b = 255, .a = 255 });
+        rl.drawTextEx(resources.font, signal_text, .{ .x = value_x, .y = top }, font_size, 1, SIGNAL_LINE_COLOR);
         value_x += resources.measureText(signal_text, font_size, 1).x + 8;
 
         const hist_text = std.fmt.bufPrintZ(&hist_buf, "{d:.4}", .{v.hist}) catch return;
-        const hist_color = if (v.hist > 0) rl.Color.green else rl.Color.red;
+        const hist_color = if (v.hist > 0) HIST_POSITIVE_COLOR else HIST_NEGATIVE_COLOR;
         rl.drawTextEx(resources.font, hist_text, .{ .x = value_x, .y = top }, font_size, 1, hist_color);
     }
 }
@@ -349,8 +353,8 @@ pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resourc
     const offset = self.signal_len + self.slow_len - 1;
     self.drawYAxis(resources);
     self.drawHistogram(offset);
-    self.drawLineChart(self.macd_y_points[self.signal_len..], .{ .r = 255, .g = 255, .b = 0, .a = 255 }, offset);
-    self.drawLineChart(self.signal_y_points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, offset);
+    self.drawLineChart(self.macd_y_points[self.signal_len..], MACD_LINE_COLOR, offset);
+    self.drawLineChart(self.signal_y_points, SIGNAL_LINE_COLOR, offset);
     try self.drawLabel(allocator, resources, ctx);
 
     const is_on_divider = rl.checkCollisionPointLine(

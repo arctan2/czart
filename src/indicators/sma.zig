@@ -7,6 +7,7 @@ const defaults = @import("defaults");
 
 const Self = @This();
 const MAX_PERIOD = 100;
+const SMA_LINE_COLOR: rl.Color = .{ .r = 150, .g = 150, .b = 255, .a = 255 };
 
 points: []rl.Vector2,
 period: usize,
@@ -60,7 +61,7 @@ fn computeSMA(self: *const Self) void {
 
 pub fn draw(self: *const Self, chart: *const charts.CandleChart) void {
     self.computeSMA();
-    charts.LineChart.draw(&chart.layout, self.points, .{ .r = 150, .g = 150, .b = 255, .a = 255 });
+    charts.LineChart.draw(&chart.layout, self.points, SMA_LINE_COLOR);
 }
 
 fn hoveredValue(self: *const Self) ?f32 {
@@ -97,7 +98,7 @@ pub fn drawLabel(
             text,
             .{ .x = start.x + prefix_w + 8, .y = start.y },
             font_size, 1,
-            .{ .r = 150, .g = 150, .b = 255, .a = 255 },
+            SMA_LINE_COLOR,
         );
     }
 

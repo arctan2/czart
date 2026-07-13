@@ -6,6 +6,7 @@ const ParamEditor = @import("param_editor.zig").ParamEditor(1);
 const defaults = @import("defaults");
 
 const Self = @This();
+const EMA_LINE_COLOR: rl.Color = .{ .r = 0, .g = 150, .b = 255, .a = 255 };
 
 points: []rl.Vector2,
 period: usize,
@@ -64,7 +65,7 @@ fn computeEMA(self: *const Self) void {
 
 pub fn draw(self: *const Self, chart: *const charts.CandleChart) void {
     self.computeEMA();
-    charts.LineChart.draw(&chart.layout, self.points, .{ .r = 0, .g = 150, .b = 255, .a = 255 });
+    charts.LineChart.draw(&chart.layout, self.points, EMA_LINE_COLOR);
 }
 
 fn hoveredValue(self: *const Self) ?f32 {
@@ -101,7 +102,7 @@ pub fn drawLabel(
             text,
             .{ .x = start.x + prefix_w + 8, .y = start.y },
             font_size, 1,
-            .{ .r = 0, .g = 150, .b = 255, .a = 255 },
+            EMA_LINE_COLOR,
         );
     }
 

@@ -11,6 +11,11 @@ const Self = @This();
 const STDDEV_MULT_TENTHS = 20;
 const MAX_STDDEV_MULT_TENTHS = 100;
 
+const SMA_LINE_COLOR: rl.Color = .white;
+const UPPER_LINE_COLOR: rl.Color = .purple;
+const LOWER_LINE_COLOR: rl.Color = .blue;
+const BAND_FILL_COLOR: rl.Color = .{ .r = 0, .g = 120, .b = 255, .a = 30 };
+
 sma: []f32,
 upper: []f32,
 lower: []f32,
@@ -149,10 +154,10 @@ fn drawBand(self: *const Self, offset_idx: usize, color: rl.Color) void {
 }
 
 pub fn draw(self: *const Self) void {
-    self.drawBand(self.period - 1, .{ .r = 0, .g = 120, .b = 255, .a = 30 });
-    self.drawLine(self.sma, self.period - 1, .white);
-    self.drawLine(self.upper, self.period - 1, .purple);
-    self.drawLine(self.lower, self.period - 1, .blue);
+    self.drawBand(self.period - 1, BAND_FILL_COLOR);
+    self.drawLine(self.sma, self.period - 1, SMA_LINE_COLOR);
+    self.drawLine(self.upper, self.period - 1, UPPER_LINE_COLOR);
+    self.drawLine(self.lower, self.period - 1, LOWER_LINE_COLOR);
 }
 
 fn hoveredValues(self: *const Self) ?struct { sma: f32, upper: f32, lower: f32 } {
@@ -189,15 +194,15 @@ pub fn drawLabel(
         var lower_buf: [16]u8 = undefined;
 
         const sma_text = std.fmt.bufPrintZ(&sma_buf, "{d:.2}", .{v.sma}) catch return true;
-        rl.drawTextEx(resources.font, sma_text, .{ .x = value_x, .y = start.y }, font_size, 1, .white);
+        rl.drawTextEx(resources.font, sma_text, .{ .x = value_x, .y = start.y }, font_size, 1, SMA_LINE_COLOR);
         value_x += resources.measureText(sma_text, font_size, 1).x + 8;
 
         const upper_text = std.fmt.bufPrintZ(&upper_buf, "{d:.2}", .{v.upper}) catch return true;
-        rl.drawTextEx(resources.font, upper_text, .{ .x = value_x, .y = start.y }, font_size, 1, .purple);
+        rl.drawTextEx(resources.font, upper_text, .{ .x = value_x, .y = start.y }, font_size, 1, UPPER_LINE_COLOR);
         value_x += resources.measureText(upper_text, font_size, 1).x + 8;
 
         const lower_text = std.fmt.bufPrintZ(&lower_buf, "{d:.2}", .{v.lower}) catch return true;
-        rl.drawTextEx(resources.font, lower_text, .{ .x = value_x, .y = start.y }, font_size, 1, .blue);
+        rl.drawTextEx(resources.font, lower_text, .{ .x = value_x, .y = start.y }, font_size, 1, LOWER_LINE_COLOR);
     }
 
     if(!is_focused) return true;

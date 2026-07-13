@@ -13,6 +13,8 @@ const ParamEditor = @import("param_editor.zig").ParamEditor(2);
 const Self = @This();
 const DEFAULT_PERIOD: usize = 14;
 const DEFAULT_SMA_PERIOD: usize = 14;
+const RSI_LINE_COLOR: rl.Color = .{ .r = 52, .g = 131, .b = 235, .a = 255 };
+const SMA_LINE_COLOR: rl.Color = .{ .r = 220, .g = 120, .b = 120, .a = 255 };
 
 points: []f32,
 sma_points: []f32,
@@ -254,11 +256,11 @@ fn drawReferenceLines(self: *Self) void {
     const levels = [_]f32{ 30, 70 };
     for (levels) |level| {
         const screen_y = self.toScreenY(level);
-        rl.drawLineEx(
+        rl.drawLineDashed(
             .{ .x = self.layout.left, .y = screen_y },
             .{ .x = self.layout.right(), .y = screen_y },
-            1.0,
-            .{ .r = 200, .g = 200, .b = 200, .a = 255 },
+            3.0, 3.0,
+            .{ .r = 100, .g = 100, .b = 250, .a = 255 },
         );
     }
 }
@@ -304,7 +306,7 @@ pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Re
         defer allocator.free(rsi_text);
         rl.drawTextEx(
             resources.font, rsi_text, .{ .x = value_x, .y = top }, font_size, 1,
-            .{ .r = 255, .g = 0, .b = 255, .a = 255 },
+            RSI_LINE_COLOR,
         );
         value_x += resources.measureText(rsi_text, font_size, 1).x + 8;
 
@@ -313,19 +315,19 @@ pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Re
             defer allocator.free(sma_text);
             rl.drawTextEx(
                 resources.font, sma_text, .{ .x = value_x, .y = top }, font_size, 1,
-                .{ .r = 255, .g = 165, .b = 0, .a = 255 },
+                SMA_LINE_COLOR,
             );
         }
     }
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
-    self.drawReferenceLines();
-    self.drawLineChart(self.points, .{ .r = 255, .g = 0, .b = 255, .a = 255 }, self.period);
-    if (self.sma_points.len > 1) {
-        self.drawLineChart(self.sma_points, .{ .r = 255, .g = 165, .b = 0, .a = 255 }, self.period + self.sma_period - 1);
-    }
     self.drawYAxis(resources);
+    self.drawReferenceLines();
+    self.drawLineChart(self.points, RSI_LINE_COLOR, self.period);
+    if (self.sma_points.len > 1) {
+        self.drawLineChart(self.sma_points, SMA_LINE_COLOR, self.period + self.sma_period - 1);
+    }
     try self.drawLabel(allocator, resources, ctx);
 
     const is_on_divider = rl.checkCollisionPointLine(
