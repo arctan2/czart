@@ -117,6 +117,7 @@ pub fn indexToTs(self: *const Self, index: f32) i64 {
 }
 
 pub fn drawCandles(self: *Self) void {
+    self.layout.beginScissorMode();
     rl.beginScissorMode(
         @intFromFloat(self.layout.left),
         @intFromFloat(self.layout.top),

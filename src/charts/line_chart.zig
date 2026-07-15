@@ -9,12 +9,7 @@ pub fn draw(
     points: []rl.Vector2,
     color: rl.Color
 ) void {
-    rl.beginScissorMode(
-        @intFromFloat(layout.left),
-        @intFromFloat(layout.top),
-        @intFromFloat(layout.width),
-        @intFromFloat(layout.height),
-    );
+    layout.beginScissorMode();
     defer rl.endScissorMode();
 
     rl.drawSplineLinear(points, 1, color);

@@ -101,12 +101,7 @@ fn calcBands(self: *const Self) void {
 fn drawLine(self: *const Self, points: []f32, offset_idx: usize, color: rl.Color) void {
     std.debug.assert(points.len > 1);
 
-    rl.beginScissorMode(
-        @intFromFloat(self.candle_chart.layout.left),
-        @intFromFloat(self.candle_chart.layout.top),
-        @intFromFloat(self.candle_chart.layout.width),
-        @intFromFloat(self.candle_chart.layout.height),
-    );
+    self.candle_chart.layout.beginScissorMode();
     defer rl.endScissorMode();
 
     var i, const end = self.candle_chart.viewXCulling(offset_idx, points.len);
@@ -126,12 +121,7 @@ fn drawLine(self: *const Self, points: []f32, offset_idx: usize, color: rl.Color
 fn drawBand(self: *const Self, offset_idx: usize, color: rl.Color) void {
     std.debug.assert(self.upper.len > 1);
 
-    rl.beginScissorMode(
-        @intFromFloat(self.candle_chart.layout.left),
-        @intFromFloat(self.candle_chart.layout.top),
-        @intFromFloat(self.candle_chart.layout.width),
-        @intFromFloat(self.candle_chart.layout.height),
-    );
+    self.candle_chart.layout.beginScissorMode();
     defer rl.endScissorMode();
 
     const upper = self.upper;

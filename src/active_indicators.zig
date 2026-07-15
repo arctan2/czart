@@ -37,8 +37,8 @@ pub const ActiveIndicator = struct {
             .sma => |*s| s.deinit(allocator),
             .ema => |*e| e.deinit(allocator),
             .bollinger_bands => |*b| b.deinit(allocator),
-            .macd => |m| m.region.destroy(allocator),
-            .rsi => |r| r.region.destroy(allocator),
+            .macd => |m| m.indicator_region.region.destroy(allocator),
+            .rsi => |r| r.indicator_region.region.destroy(allocator),
         }
     }
 
@@ -114,13 +114,13 @@ fn addIndicator(self: *Self, allocator: std.mem.Allocator, pane_region: *Region,
         2 => .{ .bollinger_bands = try indicators.BollingerBands.init(allocator, self.candle_chart) },
         3 => b: {
             const macd_ind = try indicators.MACD.init(allocator, self.candle_chart);
-            pane_region.appendChild(&macd_ind.region);
+            pane_region.appendChild(&macd_ind.indicator_region.region);
             macd_ind.compute();
             break :b .{ .macd = macd_ind };
         },
         4 => b: {
             const rsi_ind = try indicators.RSI.init(allocator, self.candle_chart);
-            pane_region.appendChild(&rsi_ind.region);
+            pane_region.appendChild(&rsi_ind.indicator_region.region);
             rsi_ind.compute();
             break :b .{ .rsi = rsi_ind };
         },

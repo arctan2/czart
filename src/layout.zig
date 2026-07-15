@@ -32,6 +32,15 @@ pub inline fn bottom(self: *const Self) f32 {
     return self.top + self.height;
 }
 
+pub inline fn beginScissorMode(self: *const Self) void {
+    rl.beginScissorMode(
+        @intFromFloat(self.left),
+        @intFromFloat(self.top),
+        @intFromFloat(self.width),
+        @intFromFloat(self.height),
+    );
+}
+
 pub fn getRect(self: *const Self) rl.Rectangle {
     return .{
         .x = self.left,
@@ -54,3 +63,4 @@ pub fn drawBoxLine(self: *const Self, color: rl.Color) void {
         color
     );
 }
+
