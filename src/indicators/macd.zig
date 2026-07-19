@@ -37,7 +37,7 @@ pub fn init(
     const self = try allocator.create(Self);
     self.* = .{
         .macd_y_points = try allocator.alloc(f32, (candle_chart.candles.len - DEFAULT_SLOW_LEN) + 1),
-        .signal_y_points = try allocator.alloc(f32, (candle_chart.candles.len - (DEFAULT_SLOW_LEN + DEFAULT_SIGNAL_LEN)) + 1),
+        .signal_y_points = try allocator.alloc(f32, (candle_chart.candles.len - (DEFAULT_SLOW_LEN + DEFAULT_SIGNAL_LEN)) + 2),
         .indicator_region = undefined,
         .candle_chart = candle_chart,
         .slow_len = DEFAULT_SLOW_LEN,
@@ -67,8 +67,8 @@ pub fn computeMinMaxY(self: *Self) void {
     var max: f32 = 0;
 
     for(0..self.signal_y_points.len) |i| {
-        min = @min(min, self.macd_y_points[i + self.signal_len], self.signal_y_points[i]);
-        max = @max(max, self.macd_y_points[i + self.signal_len], self.signal_y_points[i]);
+        min = @min(min, self.macd_y_points[i + self.signal_len - 1], self.signal_y_points[i]);
+        max = @max(max, self.macd_y_points[i + self.signal_len - 1], self.signal_y_points[i]);
     }
 
     self.indicator_region.view_y.max = max;
@@ -79,16 +79,16 @@ pub fn reallocBuffers(self: *Self, allocator: std.mem.Allocator) !void {
     allocator.free(self.macd_y_points);
     allocator.free(self.signal_y_points);
     self.macd_y_points = try allocator.alloc(f32, (self.candle_chart.candles.len - self.slow_len) + 1);
-    self.signal_y_points = try allocator.alloc(f32, (self.candle_chart.candles.len - (self.slow_len + self.signal_len)) + 1);
+    self.signal_y_points = try allocator.alloc(f32, (self.candle_chart.candles.len - (self.slow_len + self.signal_len)) + 2);
 }
 
 fn computeMACD(self: *const Self) void {
-    if (self.candle_chart.candles.len < self.slow_len) return;
+    if (self.candle_chart.candles.len < self.slow_len + self.signal_len) return;
 
     var sum_fast: f32 = 0;
     var sum_slow: f32 = 0;
 
-    for (self.candle_chart.candles[self.fast_len..(self.fast_len * 2)]) |candle| sum_fast += candle.close;
+    for (self.candle_chart.candles[0..self.fast_len]) |candle| sum_fast += candle.close;
     for (self.candle_chart.candles[0..self.slow_len]) |candle| sum_slow += candle.close;
 
     var prev_ema_fast = sum_fast / @as(f32, @floatFromInt(self.fast_len));
@@ -99,9 +99,10 @@ fn computeMACD(self: *const Self) void {
 
     for (self.fast_len..self.slow_len) |i| {
         const candle = self.candle_chart.candles[i];
-        const ema_fast = (candle.close * M_FAST) + (prev_ema_fast * (1 - M_FAST));
-        prev_ema_fast = ema_fast;
+        prev_ema_fast = (candle.close * M_FAST) + (prev_ema_fast * (1 - M_FAST));
     }
+
+    self.macd_y_points[0] = prev_ema_fast - prev_ema_slow;
 
     for (self.slow_len..self.candle_chart.candles.len) |i| {
         const candle = self.candle_chart.candles[i];
@@ -110,9 +111,7 @@ fn computeMACD(self: *const Self) void {
         prev_ema_fast = ema_fast;
         prev_ema_slow = ema_slow;
 
-        const diff_ema_fast_26 = ema_fast - ema_slow;
-
-        self.macd_y_points[i - self.slow_len] = diff_ema_fast_26;
+        self.macd_y_points[i - self.slow_len + 1] = ema_fast - ema_slow;
     }
 
     var sum: f32 = 0;
@@ -123,7 +122,7 @@ fn computeMACD(self: *const Self) void {
 
     self.signal_y_points[0] = sum / @as(f32, @floatFromInt(self.signal_len));
 
-    for (self.signal_len..(self.macd_y_points.len - self.signal_len)) |i| {
+    for (self.signal_len..self.macd_y_points.len) |i| {
         sum += self.macd_y_points[i];
         sum -= self.macd_y_points[i - self.signal_len];
         self.signal_y_points[(i - self.signal_len) + 1] = sum / @as(f32, @floatFromInt(self.signal_len));
@@ -132,16 +131,16 @@ fn computeMACD(self: *const Self) void {
 
 fn drawHistogram(self: *Self, start_idx: usize) void {
     std.debug.assert(self.macd_y_points.len > 1);
-    std.debug.assert(self.macd_y_points.len == self.signal_y_points.len + self.signal_len);
+    std.debug.assert(self.macd_y_points.len == self.signal_y_points.len + self.signal_len - 1);
 
     const layout = &self.indicator_region.layout;
     layout.beginScissorMode();
     defer rl.endScissorMode();
 
-    const macd_y_points = self.macd_y_points[self.signal_len..];
+    const macd_y_points = self.macd_y_points[self.signal_len - 1 ..];
     const signal_y_points = self.signal_y_points;
 
-    var i, const end = self.candle_chart.viewXCulling(start_idx, signal_y_points.len);
+    var i, const end = self.candle_chart.viewXCulling(start_idx, signal_y_points.len + 1);
     const slot_px = layout.width / self.candle_chart.view.x.range();
     const w = slot_px * 0.8;
     const zero_screen_y = self.indicator_region.toScreenY(0.0);
@@ -181,14 +180,14 @@ fn drawHistogram(self: *Self, start_idx: usize) void {
 fn hoveredValues(self: *const Self) ?struct { macd: f32, signal: f32, hist: f32 } {
     if (self.signal_y_points.len == 0) return null;
 
-    const offset = self.signal_len + self.slow_len - 1;
+    const offset = self.signal_len + self.slow_len - 2;
     const idx = self.candle_chart.getClosestCandleIdx(rl.getMousePosition().x);
     if (idx < @as(f32, @floatFromInt(offset))) return null;
 
     const i: usize = @intFromFloat(idx - @as(f32, @floatFromInt(offset)));
     if (i >= self.signal_y_points.len) return null;
 
-    const macd_val = self.macd_y_points[self.signal_len + i];
+    const macd_val = self.macd_y_points[self.signal_len - 1 + i];
     const signal_val = self.signal_y_points[i];
 
     return .{ .macd = macd_val, .signal = signal_val, .hist = macd_val - signal_val };
@@ -232,10 +231,10 @@ pub fn drawLabel(self: *Self, allocator: std.mem.Allocator, resources: *const Re
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resources, ctx: *const EventCtx) !void {
-    const offset = self.signal_len + self.slow_len - 1;
+    const offset = self.signal_len + self.slow_len - 2;
     self.indicator_region.drawYAxis(resources, true);
     self.drawHistogram(offset);
-    self.indicator_region.drawLineChart(self.candle_chart, self.macd_y_points[self.signal_len..], MACD_LINE_COLOR, offset);
+    self.indicator_region.drawLineChart(self.candle_chart, self.macd_y_points[self.signal_len - 1 ..], MACD_LINE_COLOR, offset);
     self.indicator_region.drawLineChart(self.candle_chart, self.signal_y_points, SIGNAL_LINE_COLOR, offset);
     try self.drawLabel(allocator, resources, ctx);
 

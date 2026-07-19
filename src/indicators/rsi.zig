@@ -31,7 +31,7 @@ pub fn init(
     candle_chart: *charts.CandleChart,
 ) !*Self {
     const self = try allocator.create(Self);
-    const points_len = (candle_chart.candles.len - DEFAULT_PERIOD) + 1;
+    const points_len = candle_chart.candles.len - DEFAULT_PERIOD;
     self.* = .{
         .points = try allocator.alloc(f32, points_len),
         .sma_points = try allocator.alloc(f32, points_len - DEFAULT_SMA_PERIOD + 1),
@@ -81,20 +81,20 @@ pub fn computeMinMaxY(self: *Self) void {
 }
 
 pub fn reallocBuffers(self: *Self, allocator: std.mem.Allocator) !void {
-    const points_len = (self.candle_chart.candles.len - self.period) + 1;
+    const points_len = self.candle_chart.candles.len - self.period;
     self.points = try allocator.realloc(self.points, points_len);
     self.sma_points = try allocator.realloc(self.sma_points, points_len - self.sma_period + 1);
 }
 
 fn computeRSI(self: *const Self) void {
-    if (self.candle_chart.candles.len < self.period) return;
+    if (self.candle_chart.candles.len < self.period + 1) return;
 
     const period: f32 = @floatFromInt(self.period);
 
     var sum_gain: f32 = 0;
     var sum_loss: f32 = 0;
 
-    for (1..self.period) |i| {
+    for (1..self.period + 1) |i| {
         const diff = self.candle_chart.candles[i].close - self.candle_chart.candles[i - 1].close;
         (if(diff > 0) sum_gain else sum_loss) += @abs(diff);
     }
@@ -104,11 +104,11 @@ fn computeRSI(self: *const Self) void {
 
     self.points[0] = 100 - (100 / (1 + (avg_gain / avg_loss)));
 
-    for (self.period..self.candle_chart.candles.len) |i| {
+    for (self.period + 1..self.candle_chart.candles.len) |i| {
         const diff = self.candle_chart.candles[i].close - self.candle_chart.candles[i - 1].close;
         const t = if(diff > 0) avg_gain else avg_loss;
         (if(diff > 0) avg_gain else avg_loss) = (t * (period - 1) + @abs(diff)) / period;
-        self.points[i - self.period + 1] = 100 - (100 / (1 + (avg_gain / avg_loss)));
+        self.points[i - self.period] = 100 - (100 / (1 + (avg_gain / avg_loss)));
     }
 }
 
@@ -206,7 +206,7 @@ pub fn draw(self: *Self, allocator: std.mem.Allocator, resources: *const Resourc
     self.drawReferenceLines();
     self.indicator_region.drawLineChart(self.candle_chart, self.points, RSI_LINE_COLOR, self.period);
     if (self.sma_points.len > 1) {
-        self.indicator_region.drawLineChart(self.candle_chart, self.sma_points, SMA_LINE_COLOR, self.period + self.sma_period - 1);
+        self.indicator_region.drawLineChart(self.candle_chart, self.sma_points, SMA_LINE_COLOR, self.period + (self.sma_period - 1));
     }
     try self.drawLabel(allocator, resources, ctx);
 

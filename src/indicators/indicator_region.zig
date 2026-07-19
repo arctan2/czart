@@ -9,6 +9,8 @@ const EventCtx = Region.EventCtx;
 const MinMax = common.MinMax;
 
 pub fn IndicatorRegion(comptime Owner: type) type {
+    const SPLIT_RATIO = 0.5;
+
     return struct {
         const Self = @This();
 
@@ -44,8 +46,8 @@ pub fn IndicatorRegion(comptime Owner: type) type {
         pub fn computeLayout(self: *Self) void {
             if (self.getAboveLayout()) |above_layout| {
                 const h = above_layout.height;
-                above_layout.height = h * (1 - 0.3);
-                self.layout.height = h * 0.3;
+                above_layout.height = h * (1 - SPLIT_RATIO);
+                self.layout.height = h * SPLIT_RATIO;
                 self.layout.width = self.layout.screen_rect.width - charts.CandleChart.Y_AXIS_WIDTH;
                 self.layout.left = above_layout.left;
                 self.layout.top = above_layout.bottom();
