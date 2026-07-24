@@ -14,7 +14,7 @@ const EventCtx = Region.EventCtx;
 const Self = @This();
 
 const DEFAULT_PERIOD = 20;
-pub var ITEMS_MAP = [_]widgets.SearchSelect.Item{
+pub var ITEMS_LIST = [_]widgets.SearchSelect.Item{
     .{ .name = "SMA", .is_selected = false },
     .{ .name = "EMA", .is_selected = false },
     .{ .name = "Bollinger Bands", .is_selected = false },
@@ -143,7 +143,7 @@ pub fn removeIndicator(self: *Self, allocator: std.mem.Allocator, item_index: us
 }
 
 pub fn toggleIndicator(self: *Self, allocator: std.mem.Allocator, pane_region: *Region, item_index: usize) !void {
-    const item = &ITEMS_MAP[item_index];
+    const item = &ITEMS_LIST[item_index];
     if (item.is_selected) {
         self.removeIndicator(allocator, item_index);
         item.is_selected = false;

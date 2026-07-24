@@ -35,7 +35,7 @@ pub fn init(
     self.* = .{
         .layout = .empty(screen_rect),
         .pane_region = pane_region,
-        .search_select_widget = try .init(allocator, &ActiveIndicators.ITEMS_MAP, &self.layout),
+        .search_select_widget = try .init(allocator, &ActiveIndicators.ITEMS_LIST, &self.layout),
         .candle_chart = candle_chart,
         .active = active_indicators,
     };
@@ -72,16 +72,16 @@ pub fn setIsActive(self: *Self, v: bool) void {
     @memset(self.search_select_widget.buf, 0);
 }
 
-pub fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
-    if(rl.isWindowResized()) {
-        self.computeLayout();
-    }
+pub fn handleResize(self: *Self) void {
+    self.computeLayout();
+}
 
+pub fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !bool {
     if(!self.is_active) {
         self.is_active = rl.isKeyPressed(.o);
         while (rl.getCharPressed() != 0) {}
         if(self.is_active) ctx.state.focus = 1;
-        return;
+        return self.is_active;
     }
 
     ctx.state.focus = 1;
@@ -91,13 +91,13 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.Even
 
     if(rl.isKeyPressed(.escape) or (is_mouse_click and !rl.checkCollisionPointRec(mouse, self.layout.getRect()))) {
         self.is_active = false;
-        return;
+        return self.is_active;
     }
 
     if (self.search_select_widget.handleEvents(ctx)) |item_index| {
         try self.active.toggleIndicator(allocator, self.pane_region, item_index);
     }
 
-    return;
+    return self.is_active;
 }
 

@@ -58,8 +58,17 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
         SCREEN_RECT.width = @as(f32, @floatFromInt(rl.getScreenWidth())) - (SCREEN_RECT.x * 2);
     }
 
-    try self.indicator_picker_layer.handleEvents(allocator, &self.event_ctx);
-    try self.pane_layer.region.handleEvents(allocator, &self.event_ctx);
+    if(rl.isWindowResized()) {
+        self.indicator_picker_layer.handleResize();
+        self.tools_layer.handleResize();
+        self.pane_layer.handleResize();
+    }
+
+    if(!try self.indicator_picker_layer.handleEvents(allocator, &self.event_ctx)) {
+        if(!try self.tools_layer.handleEvents(allocator, &self.event_ctx)) {
+            try self.pane_layer.region.handleEvents(allocator, &self.event_ctx);
+        }
+    }
 
     if (rl.isMouseButtonDown(.left)) {
         if (self.event_ctx.drag_start_mouse) |start| {

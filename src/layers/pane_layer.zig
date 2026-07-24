@@ -193,13 +193,13 @@ fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx
     }
 }
 
+pub fn handleResize(self: *Self) void {
+    self.layout.height = self.layout.screen_rect.height - charts.CandleChart.X_AXIS_HEIGHT;
+    self.layout.width = self.layout.screen_rect.width - charts.CandleChart.Y_AXIS_WIDTH;
+}
+
 fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
-
-    if(rl.isWindowResized()) {
-        self.layout.height = self.layout.screen_rect.height - charts.CandleChart.X_AXIS_HEIGHT;
-        self.layout.width = self.layout.screen_rect.width - charts.CandleChart.Y_AXIS_WIDTH;
-    }
 
     if(self.region.child) |child| {
         try child.handleEvents(allocator, ctx);

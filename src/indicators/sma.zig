@@ -61,7 +61,9 @@ fn computeSMA(self: *const Self) void {
 
 pub fn draw(self: *const Self, chart: *const charts.CandleChart) void {
     self.computeSMA();
-    charts.LineChart.draw(&chart.layout, self.points, SMA_LINE_COLOR);
+    chart.layout.beginScissorMode();
+    defer rl.endScissorMode();
+    rl.drawSplineLinear(self.points, 1, SMA_LINE_COLOR);
 }
 
 fn hoveredValue(self: *const Self) ?f32 {

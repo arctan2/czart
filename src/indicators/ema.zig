@@ -65,7 +65,10 @@ fn computeEMA(self: *const Self) void {
 
 pub fn draw(self: *const Self, chart: *const charts.CandleChart) void {
     self.computeEMA();
-    charts.LineChart.draw(&chart.layout, self.points, EMA_LINE_COLOR);
+
+    chart.layout.beginScissorMode();
+    defer rl.endScissorMode();
+    rl.drawSplineLinear(self.points, 1, EMA_LINE_COLOR);
 }
 
 fn hoveredValue(self: *const Self) ?f32 {
