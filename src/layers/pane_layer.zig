@@ -11,6 +11,7 @@ const DateFormatter = common.DateFormatter;
 const ActiveIndicators = @import("../active_indicators.zig");
 const Region = @import("region");
 const defaults = @import("defaults");
+const tools = @import("tools");
 
 const Self = @This();
 
@@ -23,6 +24,8 @@ candle_chart: *charts.CandleChart,
 region: Region,
 active_indicators: *ActiveIndicators,
 cur_edit_idx: ?usize = null,
+drag_start_view_x: MinMax = .{ .min = 0, .max = 0 },
+drag_start_view_y: MinMax = .{ .min = 0, .max = 0 },
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -143,21 +146,28 @@ fn handleEvents(self: *Self, allocator: std.mem.Allocator, ctx: *Region.EventCtx
 
     const owns_mouse_down = ctx.tryOwnMouseDown(@ptrCast(self), self.candle_chart.layout.getRect());
 
-    if (ctx.mouse_d) |mouse_d| {
-        const index_per_pixel = ctx.drag_start_view_x.range() / self.layout.width;
-        self.candle_chart.view.x.min = ctx.drag_start_view_x.min - mouse_d.x * index_per_pixel;
-        self.candle_chart.view.x.max = ctx.drag_start_view_x.max - mouse_d.x * index_per_pixel;
+    const captured_by_other = ctx.captured != null and ctx.captured != @as(*anyopaque, @ptrCast(self));
 
-        if(ctx.state.y_pan == 0 and owns_mouse_down) {
-            const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.height;
-            self.candle_chart.view.y.min = ctx.drag_start_view_y.min + mouse_d.y * price_per_pixel;
-            self.candle_chart.view.y.max = ctx.drag_start_view_y.max + mouse_d.y * price_per_pixel;
-        }
-    } else if(rl.isMouseButtonDown(.left)) {
-        ctx.drag_start_view_x = self.candle_chart.view.x;
+    if (ctx.cur_tool_idx != null or captured_by_other) {
+        self.drag_start_view_x = self.candle_chart.view.x;
+        self.drag_start_view_y = self.candle_chart.view.y;
+    } else if (owns_mouse_down) {
+        if (ctx.mouse_d) |mouse_d| {
+            const index_per_pixel = self.drag_start_view_x.range() / self.layout.width;
+            self.candle_chart.view.x.min = self.drag_start_view_x.min - mouse_d.x * index_per_pixel;
+            self.candle_chart.view.x.max = self.drag_start_view_x.max - mouse_d.x * index_per_pixel;
 
-        if(ctx.state.mouse_left_down == 0 and owns_mouse_down) {
-            ctx.drag_start_view_y = self.candle_chart.view.y;
+            if(ctx.state.y_pan == 0) {
+                const price_per_pixel = self.drag_start_view_y.range() / self.layout.height;
+                self.candle_chart.view.y.min = self.drag_start_view_y.min + mouse_d.y * price_per_pixel;
+                self.candle_chart.view.y.max = self.drag_start_view_y.max + mouse_d.y * price_per_pixel;
+            }
+        } else if(rl.isMouseButtonDown(.left)) {
+            self.drag_start_view_x = self.candle_chart.view.x;
+
+            if(ctx.state.mouse_left_down == 0) {
+                self.drag_start_view_y = self.candle_chart.view.y;
+            }
         }
     }
 
@@ -200,6 +210,10 @@ pub fn handleResize(self: *Self) void {
 
 fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
+
+    if (try tools.tryAttachTool(allocator, ctx, &self.region, self.candle_chart)) {
+        return;
+    }
 
     if(self.region.child) |child| {
         try child.handleEvents(allocator, ctx);

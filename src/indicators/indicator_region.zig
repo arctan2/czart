@@ -17,6 +17,8 @@ pub fn IndicatorRegion(comptime Owner: type) type {
         layout: Layout,
         region: Region,
         view_y: MinMax = .{ .max = 2, .min = -2 },
+        drag_start_view_y: MinMax = .{ .min = 0, .max = 0 },
+        drag_start_view_x: MinMax = .{ .min = 0, .max = 0 },
         drag_mode: enum { none, resize, pan } = .none,
         drag_start_top: f32 = 0,
         drag_start_height: f32 = 0,
@@ -159,6 +161,8 @@ pub fn IndicatorRegion(comptime Owner: type) type {
         }
 
         pub fn handleEvents(self: *Self, ctx: *EventCtx) void {
+            if (ctx.cur_tool_idx != null) return;
+
             const is_mouse_left_down = rl.isMouseButtonDown(.left);
             if (!is_mouse_left_down) self.drag_mode = .none;
 
@@ -209,13 +213,19 @@ pub fn IndicatorRegion(comptime Owner: type) type {
             }
 
             if (is_mouse_left_down) {
+                const candle_chart = self.owner().candle_chart;
                 if (ctx.mouse_d) |mouse_d| {
-                    const price_per_pixel = ctx.drag_start_view_y.range() / self.layout.height;
-                    self.view_y.min = ctx.drag_start_view_y.min + mouse_d.y * price_per_pixel;
-                    self.view_y.max = ctx.drag_start_view_y.max + mouse_d.y * price_per_pixel;
+                    const price_per_pixel = self.drag_start_view_y.range() / self.layout.height;
+                    self.view_y.min = self.drag_start_view_y.min + mouse_d.y * price_per_pixel;
+                    self.view_y.max = self.drag_start_view_y.max + mouse_d.y * price_per_pixel;
                     ctx.state.y_pan = 1;
+
+                    const index_per_pixel = self.drag_start_view_x.range() / candle_chart.layout.width;
+                    candle_chart.view.x.min = self.drag_start_view_x.min - mouse_d.x * index_per_pixel;
+                    candle_chart.view.x.max = self.drag_start_view_x.max - mouse_d.x * index_per_pixel;
                 } else if (rl.isMouseButtonDown(.left)) {
-                    ctx.drag_start_view_y = self.view_y;
+                    self.drag_start_view_y = self.view_y;
+                    self.drag_start_view_x = candle_chart.view.x;
                 }
             }
         }

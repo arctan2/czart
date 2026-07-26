@@ -19,13 +19,12 @@ pub const EventCtx = struct {
 
     zoom_sensitivity: f32 = 0.05,
     drag_start_mouse: ?rl.Vector2 = null,
-    drag_start_view_x: MinMax = .{ .min = 0, .max = 0 },
-    drag_start_view_y: MinMax = .{ .min = 0, .max = 0 },
     mouse_d: ?rl.Vector2 = null,
     wheel_d: rl.Vector2 = .{ .x = 0, .y = 0 },
     state: EventState = .{},
     captured: ?*anyopaque = null,
     focused: ?*anyopaque = null,
+    cur_tool_idx: ?usize = null,
 
     pub fn tryOwnMouseDown(self: *EventCtx, ptr: *anyopaque, rect: rl.Rectangle) bool {
         if (self.captured) |c| return c == ptr;

@@ -87,6 +87,22 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const tools = b.createModule(.{
+        .root_source_file = b.path("src/tools/tools.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "common", .module = common },
+            .{ .name = "layout", .module = layout },
+            .{ .name = "charts", .module = charts },
+            .{ .name = "raylib", .module = raylib },
+            .{ .name = "resources", .module = resources },
+            .{ .name = "widgets", .module = widgets },
+            .{ .name = "region", .module = region },
+            .{ .name = "defaults", .module = defaults },
+        },
+    });
+
     const indicators = b.createModule(.{
         .root_source_file = b.path("src/indicators/indicators.zig"),
         .target = target,
@@ -121,6 +137,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "raygui", .module = raygui },
                 .{ .name = "widgets", .module = widgets },
                 .{ .name = "defaults", .module = defaults },
+                .{ .name = "tools", .module = tools },
             },
         }),
     });
