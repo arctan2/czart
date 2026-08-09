@@ -3,6 +3,7 @@ const rl = @import("raylib");
 const Region = @import("region");
 const CandleChart = @import("charts").CandleChart;
 const EventCtx = Region.EventCtx;
+const Layout = @import("layout");
 
 pub const LineSeg = @import("line_seg.zig");
 
@@ -19,14 +20,18 @@ pub const ToolKind = enum(usize) {
     }
 };
 
-pub fn createRegion(allocator: std.mem.Allocator, kind: ToolKind, candle_chart: *CandleChart) !?*Region {
+pub fn createRegion(
+    allocator: std.mem.Allocator,
+    kind: ToolKind,
+    candle_chart: *CandleChart,
+    layout_vy: Layout.WithViewY,
+) !?*Region {
     return switch (kind) {
-        .line_seg => try LineSeg.init(allocator, candle_chart),
+        .line_seg => try LineSeg.init(allocator, candle_chart, layout_vy),
         else => null,
     };
 }
 
-/// Attach a pending tool to `parent` when the candle pane rect is clicked.
 pub fn tryAttachTool(
     allocator: std.mem.Allocator,
     ctx: *EventCtx,
@@ -34,17 +39,26 @@ pub fn tryAttachTool(
     candle_chart: *CandleChart,
 ) !bool {
     const idx = ctx.cur_tool_idx orelse return false;
+
     if (!rl.isMouseButtonPressed(.left)) return false;
-    if (!rl.checkCollisionPointRec(rl.getMousePosition(), candle_chart.layout.getRect())) return false;
 
-    const kind = ToolKind.fromIndex(idx) orelse {
+    if(parent.getLayoutWithViewY()) |l| {
+        if (!rl.checkCollisionPointRec(rl.getMousePosition(), l.layout.getRect())) {
+            return false;
+        }
+
+        const kind = ToolKind.fromIndex(idx) orelse {
+            ctx.cur_tool_idx = null;
+            return false;
+        };
+
+        if (try createRegion(allocator, kind, candle_chart, l)) |region| {
+            parent.appendChild(region);
+        }
+
         ctx.cur_tool_idx = null;
-        return false;
-    };
-
-    if (try createRegion(allocator, kind, candle_chart)) |region| {
-        parent.appendChild(region);
+        return true;
     }
-    ctx.cur_tool_idx = null;
-    return true;
+
+    return false;
 }

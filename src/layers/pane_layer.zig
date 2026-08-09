@@ -44,6 +44,7 @@ pub fn init(
             .drawFn = drawRegion,
             .handleEventsFn = handleEventsRegion,
             .getLayoutFn = getLayoutFnRegion,
+            .getLayoutWithViewYFn = getLayoutWithViewYFnRegion,
             .destroyFn = deinitRegion,
         },
         .active_indicators = try .init(allocator, candle_chart)
@@ -211,15 +212,15 @@ pub fn handleResize(self: *Self) void {
 fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
 
-    if (try tools.tryAttachTool(allocator, ctx, &self.region, self.candle_chart)) {
-        return;
-    }
-
     if(self.region.child) |child| {
         try child.handleEvents(allocator, ctx);
         if(ctx.state.view_y_resize == 1) {
             return;
         }
+    }
+
+    if (try tools.tryAttachTool(allocator, ctx, &self.region, self.candle_chart)) {
+        return;
     }
 
     try self.handleEvents(allocator, ctx);
@@ -246,5 +247,10 @@ fn drawRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventC
 fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {
     var self: *Self = @ptrCast(@alignCast(ptr));
     self.deinit(allocator);
+}
+
+fn getLayoutWithViewYFnRegion(ptr: *anyopaque) ?Layout.WithViewY {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    return .{ .layout = self.layout, .view_y = &self.candle_chart.view.y };
 }
 

@@ -11,7 +11,6 @@ const ActiveIndicators = @import("active_indicators.zig");
 
 const Self = @This();
 var SCREEN_RECT: rl.Rectangle = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
-var EVENT_CTX: Region.EventCtx = .{};
 
 resources: Resources,
 pane_layer: *PaneLayer,

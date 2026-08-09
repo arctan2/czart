@@ -33,8 +33,8 @@ pub const Self = @This();
 
 candles: []Candle,
 timeframe: Timeframe = .m1,
-view: View = .{},
 layout: Layout,
+view: View,
 
 pub fn init(screen_rect: *const rl.Rectangle, candles: []Candle) Self {
     var r = screen_rect.*;
@@ -93,6 +93,11 @@ pub fn screenXToIndex(self: *const Self, sx: f32) f32 {
 pub fn viewToScreenY(self: *const Self, y: f32) f32 {
     const t = (y - self.view.y.min) / self.view.y.range();
     return (self.layout.height * (1.0 - t)) + self.layout.top;
+}
+
+pub fn viewToScreenYIn(layout: *const Layout, view_y: *const MinMax, y: f32) f32 {
+    const t = (y - view_y.min) / view_y.range();
+    return (layout.height * (1.0 - t)) + layout.top;
 }
 
 pub fn screenToViewY(layout: *const Layout, view_y: *const MinMax, y: f32) f32 {

@@ -73,7 +73,7 @@ pub fn draw(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx, resources
 pub fn handleEvents(self: *Self, _: std.mem.Allocator, ctx: *EventCtx) !bool {
     const mouse = rl.getMousePosition();
 
-    if(ctx.cur_tool_idx != null and (rl.isKeyPressed(.escape) or rl.isMouseButtonPressed(.right))) {
+    if(ctx.cur_tool_idx != null and rl.isKeyPressed(.escape)) {
         ctx.cur_tool_idx = null;
     }
 

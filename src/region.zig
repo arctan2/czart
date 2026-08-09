@@ -71,6 +71,10 @@ pub fn emptyGetLayoutFn(_: *anyopaque) ?*Layout {
     return null;
 }
 
+pub fn emptyGetLayoutWithViewYFn(_: *anyopaque) ?Layout.WithViewY {
+    return null;
+}
+
 ptr: *anyopaque,
 parent: ?*Self = null,
 child: ?*Self = null,
@@ -79,6 +83,7 @@ sib: ?*Self = null,
 handleEventsFn: *const fn(*anyopaque, allocator: std.mem.Allocator, event_ctx: *EventCtx) error{ OutOfMemory }!void,
 drawFn: *const fn(*anyopaque, allocator: std.mem.Allocator, event_ctx: *EventCtx, resources: *Resources) error{ OutOfMemory }!void,
 getLayoutFn: *const fn(*anyopaque) ?*Layout = emptyGetLayoutFn,
+getLayoutWithViewYFn: *const fn(*anyopaque) ?Layout.WithViewY = emptyGetLayoutWithViewYFn,
 childWillDestroyFn: *const fn(*anyopaque, child: *Self) void = emptyChildWillDestroyFn,
 destroyFn: *const fn(*anyopaque, allocator: std.mem.Allocator) void,
 
@@ -183,3 +188,8 @@ pub fn insertAsPrevSib(self: *Self, region: *Self) void {
 pub fn getLayout(self: *Self) ?*Layout {
     return self.getLayoutFn(self.ptr);
 }
+
+pub fn getLayoutWithViewY(self: *Self) ?Layout.WithViewY {
+    return self.getLayoutWithViewYFn(self.ptr);
+}
+

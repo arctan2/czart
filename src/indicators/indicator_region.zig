@@ -6,6 +6,7 @@ const Resources = @import("resources");
 const Region = @import("region");
 const common = @import("common");
 const EventCtx = Region.EventCtx;
+const tools = @import("tools");
 const MinMax = common.MinMax;
 
 pub fn IndicatorRegion(comptime Owner: type) type {
@@ -16,6 +17,7 @@ pub fn IndicatorRegion(comptime Owner: type) type {
 
         layout: Layout,
         region: Region,
+        owner_ptr: *Owner,
         view_y: MinMax = .{ .max = 2, .min = -2 },
         drag_start_view_y: MinMax = .{ .min = 0, .max = 0 },
         drag_start_view_x: MinMax = .{ .min = 0, .max = 0 },
@@ -24,21 +26,26 @@ pub fn IndicatorRegion(comptime Owner: type) type {
         drag_start_height: f32 = 0,
         drag_start_above_height: f32 = 0,
 
-        pub fn init(screen_rect: *const rl.Rectangle, owner_ptr: *Owner) Self {
-            return .{
+        pub fn init(allocator: std.mem.Allocator, screen_rect: *const rl.Rectangle, owner_ptr: *Owner) !*Self {
+            const r = try allocator.create(Self);
+            r.* = .{
                 .layout = .empty(screen_rect),
+                .owner_ptr = owner_ptr,
                 .region = .{
                     .ptr = @ptrCast(owner_ptr),
                     .drawFn = drawRegion,
                     .handleEventsFn = handleEventsRegion,
                     .getLayoutFn = getLayoutFnRegion,
+                    .getLayoutWithViewYFn = getLayoutWithViewYFnRegion,
                     .destroyFn = deinitRegion,
                 },
             };
+
+            return r;
         }
 
         fn owner(self: *Self) *Owner {
-            return @fieldParentPtr("indicator_region", self);
+            return self.owner_ptr;
         }
 
         pub fn getAboveLayout(self: *Self) ?*Layout {
@@ -232,7 +239,7 @@ pub fn IndicatorRegion(comptime Owner: type) type {
 
         fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
             const self: *Owner = @alignCast(@ptrCast(ptr));
-            const region = &self.indicator_region;
+            const region = self.indicator_region;
 
             if (rl.isWindowResized()) {
                 region.computeLayout();
@@ -247,8 +254,16 @@ pub fn IndicatorRegion(comptime Owner: type) type {
                 try s.handleEvents(allocator, ctx);
             }
 
+            if (region.region.child) |c| {
+                try c.handleEvents(allocator, ctx);
+            }
+
             if (ctx.tryFocus(ptr, region.layout.getRect())) {
                 try self.handleKeyEvents(allocator, ctx);
+            }
+
+            if (try tools.tryAttachTool(allocator, ctx, &self.indicator_region.region, self.candle_chart)) {
+                return;
             }
 
             region.handleEvents(ctx);
@@ -267,6 +282,12 @@ pub fn IndicatorRegion(comptime Owner: type) type {
         fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {
             const self: *Owner = @alignCast(@ptrCast(ptr));
             self.deinit(allocator);
+        }
+
+        fn getLayoutWithViewYFnRegion(ptr: *anyopaque) ?Layout.WithViewY {
+            const self: *Owner = @alignCast(@ptrCast(ptr));
+            const region = self.indicator_region;
+            return .{ .layout = &region.layout, .view_y = &region.view_y };
         }
     };
 }

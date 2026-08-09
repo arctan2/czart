@@ -18,7 +18,7 @@ const SMA_LINE_COLOR: rl.Color = .{ .r = 220, .g = 120, .b = 120, .a = 255 };
 
 points: []f32,
 sma_points: []f32,
-indicator_region: IndicatorRegion,
+indicator_region: *IndicatorRegion,
 candle_chart: *charts.CandleChart,
 
 period: usize = DEFAULT_PERIOD,
@@ -40,7 +40,7 @@ pub fn init(
         .period = DEFAULT_PERIOD,
         .sma_period = DEFAULT_SMA_PERIOD,
     };
-    self.indicator_region = .init(candle_chart.layout.screen_rect, self);
+    self.indicator_region = try .init(allocator, candle_chart.layout.screen_rect, self);
 
     return self;
 }
@@ -56,6 +56,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     self.indicator_region.restoreAboveLayout();
     allocator.free(self.points);
     allocator.free(self.sma_points);
+    allocator.destroy(self.indicator_region);
     allocator.destroy(self);
 }
 

@@ -10,6 +10,11 @@ width: f32 = 0,
 height: f32 = 0,
 screen_rect: *const rl.Rectangle,
 
+pub const WithViewY = struct {
+    layout: *const Self,
+    view_y: *const common.MinMax
+};
+
 pub fn initRect(screen_rect: *const rl.Rectangle, rect: rl.Rectangle) Self {
     return .{
         .left = rect.x,

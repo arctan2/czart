@@ -21,7 +21,7 @@ const HIST_NEGATIVE_COLOR: rl.Color = .red;
 
 macd_y_points: []f32,
 signal_y_points: []f32,
-indicator_region: IndicatorRegion,
+indicator_region: *IndicatorRegion,
 candle_chart: *charts.CandleChart,
 
 slow_len: usize = DEFAULT_SLOW_LEN,
@@ -44,7 +44,7 @@ pub fn init(
         .fast_len = DEFAULT_FAST_LEN,
         .signal_len = DEFAULT_SIGNAL_LEN,
     };
-    self.indicator_region = .init(candle_chart.layout.screen_rect, self);
+    self.indicator_region = try .init(allocator, candle_chart.layout.screen_rect, self);
 
     return self;
 }
@@ -59,6 +59,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     self.indicator_region.restoreAboveLayout();
     allocator.free(self.macd_y_points);
     allocator.free(self.signal_y_points);
+    allocator.destroy(self.indicator_region);
     allocator.destroy(self);
 }
 
