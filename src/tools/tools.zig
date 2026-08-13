@@ -5,7 +5,7 @@ const CandleChart = @import("charts").CandleChart;
 const EventCtx = Region.EventCtx;
 const Layout = @import("layout");
 
-pub const LineSeg = @import("line_seg.zig");
+pub const Line = @import("line.zig");
 
 pub const ToolKind = enum(usize) {
     line_seg = 0,
@@ -15,6 +15,8 @@ pub const ToolKind = enum(usize) {
     pub fn fromIndex(idx: usize) ?ToolKind {
         return switch (idx) {
             0 => .line_seg,
+            1 => .ray,
+            2 => .ex_line,
             else => null,
         };
     }
@@ -27,8 +29,9 @@ pub fn createRegion(
     layout_vy: Layout.WithViewY,
 ) !?*Region {
     return switch (kind) {
-        .line_seg => try LineSeg.init(allocator, candle_chart, layout_vy),
-        else => null,
+        .line_seg => try Line.init(allocator, .line_seg, candle_chart, layout_vy),
+        .ray => try Line.init(allocator, .ray, candle_chart, layout_vy),
+        .ex_line => try Line.init(allocator, .ex_line, candle_chart, layout_vy),
     };
 }
 

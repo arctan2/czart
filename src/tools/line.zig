@@ -26,6 +26,12 @@ const Point = struct {
     price: f32,
 };
 
+pub const Kind = enum {
+    line_seg,
+    ray,
+    ex_line,
+};
+
 const Grab = enum { none, start, end, body };
 
 const State = enum {
@@ -34,6 +40,7 @@ const State = enum {
     edit,
 };
 
+kind: Kind,
 start: Point,
 end: Point,
 candle_chart: *CandleChart,
@@ -46,10 +53,11 @@ drag_anchor: Point = .{ .index = 0, .price = 0 },
 drag_start: Point = .{ .index = 0, .price = 0 },
 drag_end: Point = .{ .index = 0, .price = 0 },
 
-pub fn init(allocator: std.mem.Allocator, candle_chart: *CandleChart, layout_vy: Layout.WithViewY) !*Region {
+pub fn init(allocator: std.mem.Allocator, kind: Kind, candle_chart: *CandleChart, layout_vy: Layout.WithViewY) !*Region {
     const self = try allocator.create(Self);
     const p = mouseToData(candle_chart, layout_vy);
     self.* = .{
+        .kind = kind,
         .start = p,
         .end = p,
         .candle_chart = candle_chart,
@@ -87,12 +95,63 @@ fn mouseToData(candle_chart: *CandleChart, layout_vy: Layout.WithViewY) Point {
     };
 }
 
+fn drawnSegment(self: *const Self) [2]rl.Vector2 {
+    const a = self.toScreen(self.start);
+    const b = self.toScreen(self.end);
+
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    if (dx == 0 and dy == 0) return .{ a, b };
+
+    const layout = self.layout_vy.layout;
+
+    var t_min: f32 = -std.math.floatMax(f32);
+    var t_max: f32 = std.math.floatMax(f32);
+
+    const clipAxis = struct {
+        fn f(o: f32, d: f32, lo: f32, hi: f32, lo_t: *f32, hi_t: *f32) void {
+            if (d == 0) {
+                if (o < lo or o > hi) {
+                    lo_t.* = 1;
+                    hi_t.* = 0;
+                }
+                return;
+            }
+            const t0 = (lo - o) / d;
+            const t1 = (hi - o) / d;
+            lo_t.* = @max(lo_t.*, @min(t0, t1));
+            hi_t.* = @min(hi_t.*, @max(t0, t1));
+        }
+    }.f;
+
+    clipAxis(a.x, dx, layout.left, layout.right(), &t_min, &t_max);
+    clipAxis(a.y, dy, layout.top, layout.bottom(), &t_min, &t_max);
+
+    if (t_min > t_max) return .{ a, b };
+
+    const t_start: f32 = switch (self.kind) {
+        .line_seg => 0,
+        .ray => 0,
+        .ex_line => @min(t_min, 0),
+    };
+    const t_end: f32 = switch (self.kind) {
+        .line_seg => 1,
+        .ray, .ex_line => @max(t_max, 1),
+    };
+
+    return .{
+        .{ .x = a.x + dx * t_start, .y = a.y + dy * t_start },
+        .{ .x = a.x + dx * t_end, .y = a.y + dy * t_end },
+    };
+}
+
 fn hitHandle(screen_pt: rl.Vector2, mouse: rl.Vector2) bool {
     return rl.checkCollisionPointCircle(mouse, screen_pt, HANDLE_RADIUS + HIT_THICKNESS);
 }
 
 fn hitBody(self: *const Self, mouse: rl.Vector2) bool {
-    return rl.checkCollisionPointLine(mouse, self.toScreen(self.start), self.toScreen(self.end), HIT_THICKNESS);
+    const seg = self.drawnSegment();
+    return rl.checkCollisionPointLine(mouse, seg[0], seg[1], HIT_THICKNESS);
 }
 
 fn removeBtnRect(self: *const Self) rl.Rectangle {
@@ -213,8 +272,9 @@ fn draw(self: *Self) void {
     self.layout_vy.layout.beginScissorMode(); {
         const start = self.toScreen(self.start);
         const end = self.toScreen(self.end);
+        const seg = self.drawnSegment();
 
-        rl.drawLineEx(start, end, LINE_THICKNESS, LINE_COLOR);
+        rl.drawLineEx(seg[0], seg[1], LINE_THICKNESS, LINE_COLOR);
 
         if (self.state == .edit) {
             rl.drawCircleV(start, HANDLE_RADIUS, HANDLE_COLOR);

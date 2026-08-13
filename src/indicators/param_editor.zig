@@ -108,7 +108,7 @@ pub fn ParamEditor(comptime count: usize) type {
             rl.drawRectangleV(
                 .{ .x = start.x + param_start.x + x, .y = start.y },
                 .{ .x = w, .y = param_start.y },
-                .{ .r = 255, .g = 255, .b = 255, .a = 100 },
+                .{ .r = 185, .g = 185, .b = 185, .a = 100 },
             );
         }
     };
