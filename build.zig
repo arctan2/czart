@@ -17,7 +17,9 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/defaults.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{},
+        .imports = &.{
+            .{ .name = "raylib", .module = raylib },
+        },
     });
 
     const common = b.createModule(.{

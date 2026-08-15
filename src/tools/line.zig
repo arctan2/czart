@@ -4,6 +4,7 @@ const CandleChart = @import("charts").CandleChart;
 const Region = @import("region");
 const Layout = @import("layout");
 const Resources = @import("resources");
+const defaults = @import("defaults");
 const EventCtx = Region.EventCtx;
 
 const Self = @This();
@@ -267,7 +268,35 @@ fn drawRemoveBtn(self: *const Self) void {
     rl.drawLineEx(.{ .x = r, .y = t }, .{ .x = l, .y = b }, 1.6, BTN_ICON);
 }
 
-fn draw(self: *Self) void {
+fn name(self: *const Self) [:0]const u8 {
+    return switch (self.kind) {
+        .line_seg => "Line",
+        .ex_line => "ExLine",
+        .ray => "Ray",
+    };
+}
+
+fn drawActiveToolBadge(self: *const Self, resources: *Resources) void {
+    const text = self.name();
+    const screen = self.layout_vy.layout.screen_rect.*;
+    const text_size = resources.measureText(text, defaults.BADGE_FONT_SIZE, 0);
+
+    const rect: rl.Rectangle = .{
+        .x = screen.x + (screen.width / 2) - (text_size.x / 2) - defaults.BADGE_PAD_X,
+        .y = screen.y + screen.height - text_size.y - (defaults.BADGE_PAD_Y * 2) - defaults.BADGE_BOTTOM_GAP,
+        .width = text_size.x + (defaults.BADGE_PAD_X * 2),
+        .height = text_size.y + (defaults.BADGE_PAD_Y * 2),
+    };
+
+    rl.drawRectangleRec(rect, defaults.BADGE_BG);
+    rl.drawRectangleLinesEx(rect, 1, defaults.BADGE_BORDER);
+    rl.drawTextEx(resources.font, text, .{
+        .x = rect.x + defaults.BADGE_PAD_X,
+        .y = rect.y + defaults.BADGE_PAD_Y,
+    }, defaults.BADGE_FONT_SIZE, 0, defaults.BADGE_TEXT);
+}
+
+fn draw(self: *Self, resources: *Resources) void {
     self.layout_vy.layout.beginScissorMode(); {
         const start = self.toScreen(self.start);
         const end = self.toScreen(self.end);
@@ -275,15 +304,22 @@ fn draw(self: *Self) void {
 
         rl.drawLineEx(seg[0], seg[1], LINE_THICKNESS, LINE_COLOR);
 
-        if (self.state == .edit) {
-            rl.drawCircleV(start, HANDLE_RADIUS, HANDLE_COLOR);
-            rl.drawCircleV(end, HANDLE_RADIUS, HANDLE_COLOR);
-            rl.drawCircleLinesV(start, HANDLE_RADIUS, LINE_COLOR);
-            rl.drawCircleLinesV(end, HANDLE_RADIUS, LINE_COLOR);
+        switch(self.state) {
+            .edit => {
+                rl.drawCircleV(start, HANDLE_RADIUS, HANDLE_COLOR);
+                rl.drawCircleV(end, HANDLE_RADIUS, HANDLE_COLOR);
+                rl.drawCircleLinesV(start, HANDLE_RADIUS, LINE_COLOR);
+                rl.drawCircleLinesV(end, HANDLE_RADIUS, LINE_COLOR);
+            },
+            else => {}
         }
     } rl.endScissorMode();
 
-    if (self.state == .edit) self.drawRemoveBtn();
+    switch(self.state) {
+        .edit => self.drawRemoveBtn(),
+        .create => self.drawActiveToolBadge(resources),
+        else => {}
+    }
 }
 
 fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
@@ -298,9 +334,9 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Event
     }
 }
 
-fn drawRegion(ptr: *anyopaque, _: std.mem.Allocator, _: *EventCtx, _: *Resources) !void {
+fn drawRegion(ptr: *anyopaque, _: std.mem.Allocator, _: *EventCtx, resources: *Resources) !void {
     const self: *Self = @ptrCast(@alignCast(ptr));
-    self.draw();
+    self.draw(resources);
 }
 
 fn deinitRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {

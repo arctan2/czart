@@ -11,8 +11,8 @@ const DropDown = @import("widgets").DropDown;
 
 const Self = @This();
 
-const SIZE = 40;
-const PAD = 40;
+const SIZE = 20;
+const PAD = 25;
 
 layout: Layout,
 candle_chart: *charts.CandleChart,
@@ -66,8 +66,32 @@ fn drawToolsPanel(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx, res
     }
 }
 
+fn drawActiveToolBadge(self: *Self, ctx: *EventCtx, resources: *Resources) void {
+    const idx = ctx.cur_tool_idx orelse return;
+    if (idx >= TOOLS_LIST.len) return;
+    const name = TOOLS_LIST[idx].name;
+
+    const screen = self.layout.screen_rect;
+    const text_size = resources.measureText(name, defaults.BADGE_FONT_SIZE, 0);
+
+    const rect: rl.Rectangle = .{
+        .x = screen.x + (screen.width / 2) - (text_size.x / 2) - defaults.BADGE_PAD_X,
+        .y = screen.y + screen.height - text_size.y - (defaults.BADGE_PAD_Y * 2) - defaults.BADGE_BOTTOM_GAP,
+        .width = text_size.x + (defaults.BADGE_PAD_X * 2),
+        .height = text_size.y + (defaults.BADGE_PAD_Y * 2),
+    };
+
+    rl.drawRectangleRec(rect, defaults.BADGE_BG);
+    rl.drawRectangleLinesEx(rect, 1, defaults.BADGE_BORDER);
+    rl.drawTextEx(resources.font, name, .{
+        .x = rect.x + defaults.BADGE_PAD_X,
+        .y = rect.y + defaults.BADGE_PAD_Y,
+    }, defaults.BADGE_FONT_SIZE, 0, defaults.BADGE_TEXT);
+}
+
 pub fn draw(self: *Self, allocator: std.mem.Allocator, ctx: *EventCtx, resources: *Resources) !void {
     try self.drawToolsPanel(allocator, ctx, resources);
+    self.drawActiveToolBadge(ctx, resources);
 }
 
 pub fn handleEvents(self: *Self, _: std.mem.Allocator, ctx: *EventCtx) !bool {
@@ -86,13 +110,15 @@ pub fn handleEvents(self: *Self, _: std.mem.Allocator, ctx: *EventCtx) !bool {
         self.is_dropdown_active = true;
     }
 
-    if(self.tools_dropdown.handleEvents(ctx)) |idx| {
-        self.is_dropdown_active = false;
-        self.tools_dropdown.scroll_offset = 0;
-        ctx.cur_tool_idx = idx;
-        // eat this frame so the same press that picked the item isn't also
-        // consumed as the tool's placement click.
-        return true;
+    if(self.is_dropdown_active) {
+        if(self.tools_dropdown.handleEvents(ctx)) |idx| {
+            self.is_dropdown_active = false;
+            self.tools_dropdown.scroll_offset = 0;
+            ctx.cur_tool_idx = idx;
+            // eat this frame so the same press that picked the item isn't also
+            // consumed as the tool's placement click.
+            return true;
+        }
     }
 
     return self.is_dropdown_active;

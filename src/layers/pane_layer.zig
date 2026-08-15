@@ -66,7 +66,7 @@ fn drawIndicatorLabels(self: *Self, allocator: std.mem.Allocator, ctx: *Region.E
             allocator,
             .{
                 .x = self.layout.left + INDICATOR_LABEL_PAD,
-                .y = INDICATOR_LABEL_PAD + self.layout.top + y
+                .y = (INDICATOR_LABEL_PAD * 2) + self.layout.top + y
             },
             (ctx.focused == @as(*anyopaque, @ptrCast(self))) and (idx == self.cur_edit_idx),
             resources
