@@ -212,6 +212,10 @@ pub fn handleResize(self: *Self) void {
 fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Region.EventCtx) !void {
     var self: *Self = @ptrCast(@alignCast(ptr));
 
+    if(self.region.sib) |sib| {
+        try sib.handleEvents(allocator, ctx);
+    }
+
     if(self.region.child) |child| {
         try child.handleEvents(allocator, ctx);
         if(ctx.state.view_y_resize == 1) {

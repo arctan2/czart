@@ -13,6 +13,7 @@ const Self = @This();
 var SCREEN_RECT: rl.Rectangle = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
 
 resources: Resources,
+root_region: *Region.Root,
 pane_layer: *PaneLayer,
 dialog_layer: *DialogLayer,
 tools_layer: *ToolsLayer,
@@ -22,7 +23,10 @@ event_ctx: Region.EventCtx = .{},
 pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []charts.CandleChart.Candle) !Self {
     SCREEN_RECT = screen_rect;
 
+    const root_region: *Region.Root = try .init(allocator);
     const pane_layer: *PaneLayer = try .init(allocator, &SCREEN_RECT, candles);
+    root_region.region.appendChild(&pane_layer.region);
+
     const indicator_picker_layer: *IndicatorPickerLayer = try .init(
         allocator, &SCREEN_RECT, &pane_layer.region, pane_layer.candle_chart, pane_layer.active_indicators
     );
@@ -31,6 +35,7 @@ pub fn init(allocator: std.mem.Allocator, screen_rect: rl.Rectangle, candles: []
 
     return .{
         .resources = try .init(),
+        .root_region = root_region,
         .pane_layer = pane_layer,
         .indicator_picker_layer = indicator_picker_layer,
         .dialog_layer = dialog_layer,
@@ -65,7 +70,7 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
 
     if(!try self.indicator_picker_layer.handleEvents(allocator, &self.event_ctx)) {
         if(!try self.tools_layer.handleEvents(allocator, &self.event_ctx)) {
-            try self.pane_layer.region.handleEvents(allocator, &self.event_ctx);
+            try self.root_region.region.handleEvents(allocator, &self.event_ctx);
         }
     }
 
@@ -87,7 +92,7 @@ pub fn handleEvents(self: *Self, allocator: std.mem.Allocator) !void {
 }
 
 pub fn draw(self: *Self, allocator: std.mem.Allocator) !void {
-    try self.pane_layer.region.draw(allocator, &self.event_ctx, &self.resources);
+    try self.root_region.region.draw(allocator, &self.event_ctx, &self.resources);
     try self.tools_layer.draw(allocator, &self.event_ctx, &self.resources);
     try self.indicator_picker_layer.draw(allocator, &self.event_ctx, &self.resources);
     try self.dialog_layer.draw(allocator, &self.event_ctx, &self.resources);
@@ -97,6 +102,6 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     self.dialog_layer.deinit(allocator);
     self.tools_layer.deinit(allocator);
     self.indicator_picker_layer.deinit(allocator);
-    self.pane_layer.region.destroy(allocator);
+    self.root_region.region.destroy(allocator);
 }
 

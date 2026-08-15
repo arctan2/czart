@@ -128,17 +128,23 @@ pub fn childWillDestroy(self: *Self, child: *Self) void {
 }
 
 pub fn destroy(self: *Self, allocator: std.mem.Allocator) void {
-    while (self.child) |child| {
-        self.child = child.sib;
-        child.destroy(allocator);
-    }
-
     const parent = self.parent;
     const sib = self.sib;
 
-    if(parent) |p| p.childWillDestroy(self);
-    self.destroyFn(self.ptr, allocator);
+    self.destroySubtree(allocator);
+
     if(parent) |p| p.detachChild(self, sib);
+}
+
+fn destroySubtree(self: *Self, allocator: std.mem.Allocator) void {
+    if(self.parent) |p| p.childWillDestroy(self);
+
+    while (self.child) |child| {
+        self.child = child.sib;
+        child.destroySubtree(allocator);
+    }
+
+    self.destroyFn(self.ptr, allocator);
 }
 
 pub fn getPrevSib(self: *Self) ?*Self {
@@ -192,4 +198,35 @@ pub fn getLayout(self: *Self) ?*Layout {
 pub fn getLayoutWithViewY(self: *Self) ?Layout.WithViewY {
     return self.getLayoutWithViewYFn(self.ptr);
 }
+
+pub const Root = struct {
+    region: Self,
+
+    pub fn init(allocator: std.mem.Allocator) !*Root {
+        const self = try allocator.create(Root);
+        self.* = .{
+            .region = .{
+                .ptr = @ptrCast(self),
+                .drawFn = drawRegion,
+                .handleEventsFn = handleEventsRegion,
+                .destroyFn = destroyRegion,
+            },
+        };
+        return self;
+    }
+
+    fn drawRegion(_: *anyopaque, _: std.mem.Allocator, _: *EventCtx, _: *Resources) !void {}
+
+    fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *EventCtx) !void {
+        const self: *Root = @ptrCast(@alignCast(ptr));
+        if (self.region.child) |child| {
+            try child.handleEvents(allocator, ctx);
+        }
+    }
+
+    fn destroyRegion(ptr: *anyopaque, allocator: std.mem.Allocator) void {
+        const self: *Root = @ptrCast(@alignCast(ptr));
+        allocator.destroy(self);
+    }
+};
 

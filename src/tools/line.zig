@@ -66,7 +66,6 @@ pub fn init(allocator: std.mem.Allocator, kind: Kind, candle_chart: *CandleChart
             .ptr = @ptrCast(self),
             .drawFn = drawRegion,
             .handleEventsFn = handleEventsRegion,
-            .getLayoutFn = getLayoutFnRegion,
             .destroyFn = deinitRegion,
         },
     };
@@ -297,11 +296,6 @@ fn handleEventsRegion(ptr: *anyopaque, allocator: std.mem.Allocator, ctx: *Event
     if (self.handleEvents(ctx)) {
         self.region.destroy(allocator);
     }
-}
-
-fn getLayoutFnRegion(ptr: *anyopaque) ?*Layout {
-    const self: *Self = @alignCast(@ptrCast(ptr));
-    return @constCast(self.layout_vy.layout);
 }
 
 fn drawRegion(ptr: *anyopaque, _: std.mem.Allocator, _: *EventCtx, _: *Resources) !void {

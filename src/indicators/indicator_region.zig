@@ -49,7 +49,13 @@ pub fn IndicatorRegion(comptime Owner: type) type {
         }
 
         pub fn getAboveLayout(self: *Self) ?*Layout {
-            return (if (self.region.getPrevSib()) |sib| sib else self.region.parent.?).getLayout();
+            var prev = self.region.getPrevSib();
+            while (prev) |p| : (prev = p.getPrevSib()) {
+                if (p.getLayout()) |layout| return layout;
+            }
+
+            const parent = self.region.parent orelse return null;
+            return parent.getLayout();
         }
 
         pub fn computeLayout(self: *Self) void {
@@ -64,8 +70,7 @@ pub fn IndicatorRegion(comptime Owner: type) type {
         }
 
         pub fn restoreAboveLayout(self: *Self) void {
-            const above: *Region = if (self.region.getPrevSib()) |sib| sib else self.region.parent.?;
-            if (above.getLayout()) |above_layout| {
+            if (self.getAboveLayout()) |above_layout| {
                 above_layout.height += self.layout.height;
             }
         }
